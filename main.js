@@ -831,6 +831,9 @@ function createCameraMenu() {
         </div>
         <button id="closeCameraMenu" style="margin-top:10px;">Close</button>
     `;
+    // Make mobile-friendly and register as the active menu on phones
+    applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'cam-controls');
     document.body.appendChild(menu);
 
     // Camera movement step size
