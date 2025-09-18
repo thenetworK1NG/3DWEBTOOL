@@ -15,6 +15,30 @@ function applyResponsiveMenu(menu) {
     menu.style.padding = '14px';
 }
 
+// Ensure only one menu is open at a time on mobile
+function ensureSingleOpenMenu(menu, tag) {
+    const isMobile = (window.__isMobile !== undefined) ? window.__isMobile : matchMedia('(pointer: coarse), (max-width: 768px)').matches;
+    if (!isMobile) return;
+    if (window.__activeMenu && window.__activeMenu !== menu) {
+        try { window.__activeMenu.remove(); } catch (_) {}
+    }
+    window.__activeMenu = menu;
+    if (tag) window.__activeMenuTag = tag; // remember which menu type is open
+}
+
+// Toggle helper: if the same menu is open, close it; otherwise open via creator()
+function toggleMenu(tag, creator) {
+    const isMobile = (window.__isMobile !== undefined) ? window.__isMobile : matchMedia('(pointer: coarse), (max-width: 768px)').matches;
+    // We allow toggling on all devices, but the single-open behavior is mobile-only
+    if (window.__activeMenu && window.__activeMenuTag === tag) {
+        try { window.__activeMenu.remove(); } catch (_) {}
+        window.__activeMenu = null;
+        window.__activeMenuTag = null;
+        return;
+    }
+    creator();
+}
+
 function createSceneSettingsMenu() {
     const menu = document.createElement('div');
     menu.style.position = 'fixed';
@@ -36,6 +60,7 @@ function createSceneSettingsMenu() {
         <button id="closeSceneSettingsMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'scene');
     document.body.appendChild(menu);
 
     // Gather scene data
@@ -162,7 +187,7 @@ function createSceneSettingsMenu() {
         };
         reader.readAsText(file);
     });
-    document.getElementById('closeSceneSettingsMenu').onclick = function() { menu.remove(); };
+    document.getElementById('closeSceneSettingsMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 // --- Lighting Menu UI ---
 function createLightingMenu() {
@@ -185,6 +210,7 @@ function createLightingMenu() {
         <button id="closeLightingMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'lighting');
     document.body.appendChild(menu);
     // Find lights
     let hemi = null, dir = null;
@@ -202,7 +228,7 @@ function createLightingMenu() {
     document.getElementById('dirIntensity').addEventListener('input', function() {
         if (dir) { dir.intensity = parseFloat(this.value); document.getElementById('dirVal').textContent = this.value; }
     });
-    document.getElementById('closeLightingMenu').onclick = function() { menu.remove(); };
+    document.getElementById('closeLightingMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 
 // --- Background Menu UI ---
@@ -225,12 +251,13 @@ function createBackgroundMenu() {
         <button id="closeBackgroundMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'background');
     document.body.appendChild(menu);
     document.getElementById('bgColor').value = '#'+scene.background.getHexString();
     document.getElementById('bgColor').addEventListener('input', function() {
         scene.background = new THREE.Color(this.value);
     });
-    document.getElementById('closeBackgroundMenu').onclick = function() { menu.remove(); };
+    document.getElementById('closeBackgroundMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 
 // --- Texture Menu UI ---
@@ -254,6 +281,7 @@ function createTextureMenu() {
         <button id="closeTextureMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'texture');
     document.body.appendChild(menu);
     // Store original maps for restoration
     if (!model._originalMaps) {
@@ -312,7 +340,7 @@ function createTextureMenu() {
             });
         }
     });
-    document.getElementById('closeTextureMenu').onclick = function() { menu.remove(); };
+    document.getElementById('closeTextureMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 
 // --- Material Fixes / Debug Menu UI ---
@@ -340,6 +368,7 @@ function createMaterialFixMenu() {
         <button id="closeMaterialFixMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'material');
     document.body.appendChild(menu);
 
     // Initialize from current state
@@ -425,7 +454,7 @@ function createMaterialFixMenu() {
             });
         });
     });
-    document.getElementById('closeMaterialFixMenu').onclick = function() { menu.remove(); };
+    document.getElementById('closeMaterialFixMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 // --- Camera Animation Export Menu UI ---
 function createCameraExportMenu() {
@@ -450,6 +479,7 @@ window.createCameraExportMenu = createCameraExportMenu;
         <button id="closeCameraExportMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'cam-export');
     document.body.appendChild(menu);
     // Import logic
     document.getElementById('importKeyframesJson').addEventListener('change', function(e) {
@@ -529,6 +559,7 @@ window.createCameraExportMenu = createCameraExportMenu;
     };
     document.getElementById('closeCameraExportMenu').onclick = function() {
         menu.remove();
+        if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
 }
 // --- Camera View Settings Menu UI ---
@@ -553,6 +584,7 @@ function createCameraViewSettingsMenu() {
         <button id="closeCameraViewMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'cam-view');
     document.body.appendChild(menu);
 
     document.getElementById('fovSlider').addEventListener('input', function() {
@@ -572,6 +604,7 @@ function createCameraViewSettingsMenu() {
     });
     document.getElementById('closeCameraViewMenu').onclick = function() {
         menu.remove();
+        if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
 }
 // --- Camera Animation Menu UI ---
@@ -600,6 +633,7 @@ function createCameraAnimationMenu() {
         <button id="closeCameraAnimMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'cam-anim');
     document.body.appendChild(menu);
 
     // --- Camera Animation Logic ---
@@ -763,6 +797,7 @@ function createCameraAnimationMenu() {
     updateKeyframeList();
     document.getElementById('closeCameraAnimMenu').onclick = function() {
         menu.remove();
+        if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
 }
 // --- Camera Controls Menu UI ---
@@ -871,6 +906,7 @@ function createCameraMenu() {
     };
     document.getElementById('closeCameraMenu').onclick = function() {
         menu.remove();
+        if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
 }
 // --- Settings Menu UI ---
@@ -920,6 +956,7 @@ function createSettingsMenu() {
     });
     document.getElementById('closeMenu').onclick = function() {
         menu.remove();
+        if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
 }
 
@@ -989,6 +1026,7 @@ function createAnimationsMenu() {
         <button id="closeAnimationsMenu" style="margin-top:10px;">Close</button>
     `;
     applyResponsiveMenu(menu);
+    ensureSingleOpenMenu(menu, 'gltf-anims');
     document.body.appendChild(menu);
 
     function buildList() {
@@ -1113,7 +1151,7 @@ function createAnimationsMenu() {
             if (tSlider) tSlider.value = 0;
         });
     };
-    document.getElementById('closeAnimationsMenu').onclick = function() { menu.remove(); };
+    document.getElementById('closeAnimationsMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 
     buildList();
 }
@@ -1424,14 +1462,14 @@ function init() {
         // Open (file) icon triggers hidden input
         const openHandler = () => document.getElementById('upload').click();
         mobileBar.appendChild(mkBtn('📂', openHandler, 'Open Model'));
-        mobileBar.appendChild(mkBtn('🎥', createCameraMenu, 'Camera Controls'));
-        mobileBar.appendChild(mkBtn('🔭', createCameraViewSettingsMenu, 'View Settings'));
-        mobileBar.appendChild(mkBtn('▶️', createCameraAnimationMenu, 'Camera Animation'));
-        mobileBar.appendChild(mkBtn('🎞️', createAnimationsMenu, 'GLTF Animations'));
-        mobileBar.appendChild(mkBtn('💡', createLightingMenu, 'Lighting'));
-        mobileBar.appendChild(mkBtn('🖼️', createBackgroundMenu, 'Background'));
-        mobileBar.appendChild(mkBtn('🎨', createMaterialFixMenu, 'Material Fixes'));
-        mobileBar.appendChild(mkBtn('🧩', createSceneSettingsMenu, 'Scene Settings'));
+        mobileBar.appendChild(mkBtn('🎥', () => toggleMenu('cam-controls', createCameraMenu), 'Camera Controls'));
+        mobileBar.appendChild(mkBtn('🔭', () => toggleMenu('cam-view', createCameraViewSettingsMenu), 'View Settings'));
+        mobileBar.appendChild(mkBtn('▶️', () => toggleMenu('cam-anim', createCameraAnimationMenu), 'Camera Animation'));
+        mobileBar.appendChild(mkBtn('🎞️', () => toggleMenu('gltf-anims', createAnimationsMenu), 'GLTF Animations'));
+        mobileBar.appendChild(mkBtn('💡', () => toggleMenu('lighting', createLightingMenu), 'Lighting'));
+        mobileBar.appendChild(mkBtn('🖼️', () => toggleMenu('background', createBackgroundMenu), 'Background'));
+        mobileBar.appendChild(mkBtn('🎨', () => toggleMenu('material', createMaterialFixMenu), 'Material Fixes'));
+        mobileBar.appendChild(mkBtn('🧩', () => toggleMenu('scene', createSceneSettingsMenu), 'Scene Settings'));
     }
 
     window.addEventListener('resize', onWindowResize, false);
