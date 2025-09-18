@@ -18,12 +18,100 @@ function applyResponsiveMenu(menu) {
 // Ensure only one menu is open at a time on mobile
 function ensureSingleOpenMenu(menu, tag) {
     const isMobile = (window.__isMobile !== undefined) ? window.__isMobile : matchMedia('(pointer: coarse), (max-width: 768px)').matches;
-    if (!isMobile) return;
-    if (window.__activeMenu && window.__activeMenu !== menu) {
-        try { window.__activeMenu.remove(); } catch (_) {}
+    if (tag) menu.dataset.menuTag = tag;
+    if (isMobile) {
+        // Mobile: only one menu total
+        if (window.__activeMenu && window.__activeMenu !== menu) {
+            try { window.__activeMenu.remove(); } catch (_) {}
+        }
+        window.__activeMenu = menu;
+        if (tag) window.__activeMenuTag = tag; // remember which menu type is open
+    } else if (tag) {
+        // Desktop: allow multiple menus, but only one per tag/type to avoid duplicate IDs
+        const existing = Array.from(document.querySelectorAll('[data-menu-tag]'))
+            .filter(el => el !== menu && el.dataset.menuTag === tag);
+        existing.forEach(el => { try { el.remove(); } catch (_) {} });
     }
-    window.__activeMenu = menu;
-    if (tag) window.__activeMenuTag = tag; // remember which menu type is open
+}
+
+// Desktop-only: make popup menus draggable via a small handle
+function makeMenuDraggable(menu) {
+    const isMobile = (window.__isMobile !== undefined) ? window.__isMobile : matchMedia('(pointer: coarse), (max-width: 768px)').matches;
+    if (isMobile || !menu) return;
+    // Add a drag handle at the top
+    const handle = document.createElement('div');
+    handle.className = 'menu-drag-handle';
+    handle.textContent = '⇕ Drag';
+    Object.assign(handle.style, {
+        cursor: 'move',
+        userSelect: 'none',
+        fontSize: '12px',
+        color: '#333',
+        background: 'rgba(240,240,240,0.9)',
+        borderBottom: '1px solid #ddd',
+        margin: '-12px -16px 8px -16px', // extend into the menu padding
+        padding: '6px 10px',
+        borderTopLeftRadius: '8px',
+        borderTopRightRadius: '8px'
+    });
+    try { menu.insertBefore(handle, menu.firstChild); } catch(_) { menu.appendChild(handle); }
+
+    if (!window.__menuZ) window.__menuZ = 1500;
+    let dragging = false;
+    let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    const onMouseDown = (e) => {
+        if (e.button !== 0) return; // left button only
+        dragging = true;
+        const rect = menu.getBoundingClientRect();
+        // Promote to top
+        window.__menuZ += 1; menu.style.zIndex = window.__menuZ;
+        startX = e.clientX; startY = e.clientY;
+        // If style left/top not set, initialize from rect
+        const curLeft = parseFloat(menu.style.left || rect.left + '');
+        const curTop = parseFloat(menu.style.top || rect.top + '');
+        startLeft = curLeft; startTop = curTop;
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        e.preventDefault();
+    };
+    const onMouseMove = (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+        // Clamp within viewport a bit
+        const maxLeft = window.innerWidth - 80; // leave some space
+        const maxTop = window.innerHeight - 60;
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+        menu.style.left = newLeft + 'px';
+        menu.style.top = newTop + 'px';
+    };
+    const onMouseUp = () => {
+        dragging = false;
+        document.body.style.userSelect = '';
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+    };
+    handle.addEventListener('mousedown', onMouseDown);
+    handle.addEventListener('dragstart', (e) => e.preventDefault());
+}
+
+function centerMenuOnOpen(menu) {
+    const isMobile = (window.__isMobile !== undefined) ? window.__isMobile : matchMedia('(pointer: coarse), (max-width: 768px)').matches;
+    if (isMobile || !menu) return; // mobile uses responsive top-left positioning
+    // Use fixed positioning to center
+    menu.style.position = 'fixed';
+    // Compute after layout
+    requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect();
+        const left = Math.max(0, (window.innerWidth - rect.width) / 2);
+        const top = Math.max(0, (window.innerHeight - rect.height) / 2);
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+    });
 }
 
 // Toggle helper: if the same menu is open, close it; otherwise open via creator()
@@ -62,6 +150,8 @@ function createSceneSettingsMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'scene');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     // Gather scene data
     let hemi = null, dir = null;
@@ -187,7 +277,7 @@ function createSceneSettingsMenu() {
         };
         reader.readAsText(file);
     });
-    document.getElementById('closeSceneSettingsMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
+    menu.querySelector('#closeSceneSettingsMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 // --- Lighting Menu UI ---
 function createLightingMenu() {
@@ -212,6 +302,8 @@ function createLightingMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'lighting');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
     // Find lights
     let hemi = null, dir = null;
     scene.traverse(obj => {
@@ -228,7 +320,7 @@ function createLightingMenu() {
     document.getElementById('dirIntensity').addEventListener('input', function() {
         if (dir) { dir.intensity = parseFloat(this.value); document.getElementById('dirVal').textContent = this.value; }
     });
-    document.getElementById('closeLightingMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
+    menu.querySelector('#closeLightingMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 
 // --- Background Menu UI ---
@@ -253,11 +345,13 @@ function createBackgroundMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'background');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
     document.getElementById('bgColor').value = '#'+scene.background.getHexString();
     document.getElementById('bgColor').addEventListener('input', function() {
         scene.background = new THREE.Color(this.value);
     });
-    document.getElementById('closeBackgroundMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
+    menu.querySelector('#closeBackgroundMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 
 // --- Texture Menu UI ---
@@ -283,6 +377,8 @@ function createTextureMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'texture');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
     // Store original maps for restoration
     if (!model._originalMaps) {
         model._originalMaps = [];
@@ -340,7 +436,7 @@ function createTextureMenu() {
             });
         }
     });
-    document.getElementById('closeTextureMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
+    menu.querySelector('#closeTextureMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 
 // --- Material Fixes / Debug Menu UI ---
@@ -370,6 +466,8 @@ function createMaterialFixMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'material');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     // Initialize from current state
     document.getElementById('mfExposure').value = renderer.toneMappingExposure;
@@ -454,7 +552,7 @@ function createMaterialFixMenu() {
             });
         });
     });
-    document.getElementById('closeMaterialFixMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
+    menu.querySelector('#closeMaterialFixMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 }
 // --- Camera Animation Export Menu UI ---
 function createCameraExportMenu() {
@@ -481,6 +579,8 @@ window.createCameraExportMenu = createCameraExportMenu;
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'cam-export');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
     // Import logic
     document.getElementById('importKeyframesJson').addEventListener('change', function(e) {
         const file = e.target.files[0];
@@ -557,7 +657,7 @@ window.createCameraExportMenu = createCameraExportMenu;
         a.click();
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
     };
-    document.getElementById('closeCameraExportMenu').onclick = function() {
+    menu.querySelector('#closeCameraExportMenu').onclick = function() {
         menu.remove();
         if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
@@ -586,6 +686,8 @@ function createCameraViewSettingsMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'cam-view');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     document.getElementById('fovSlider').addEventListener('input', function() {
         camera.fov = parseFloat(this.value);
@@ -602,7 +704,7 @@ function createCameraViewSettingsMenu() {
         camera.updateProjectionMatrix();
         document.getElementById('farVal').textContent = this.value;
     });
-    document.getElementById('closeCameraViewMenu').onclick = function() {
+    menu.querySelector('#closeCameraViewMenu').onclick = function() {
         menu.remove();
         if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
@@ -635,6 +737,8 @@ function createCameraAnimationMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'cam-anim');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     // --- Camera Animation Logic ---
     let animating = false;
@@ -795,7 +899,7 @@ function createCameraAnimationMenu() {
     };
     // Update list on open
     updateKeyframeList();
-    document.getElementById('closeCameraAnimMenu').onclick = function() {
+    menu.querySelector('#closeCameraAnimMenu').onclick = function() {
         menu.remove();
         if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
@@ -835,6 +939,8 @@ function createCameraMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'cam-controls');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     // Camera movement step size
     // OrbitControls.pan expects deltas in screen pixels, not world units
@@ -907,7 +1013,7 @@ function createCameraMenu() {
         }
         controls.update();
     };
-    document.getElementById('closeCameraMenu').onclick = function() {
+    menu.querySelector('#closeCameraMenu').onclick = function() {
         menu.remove();
         if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
@@ -935,6 +1041,8 @@ function createSettingsMenu() {
         <button id="closeMenu" style="margin-top:10px;">Close</button>
     `;
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     // Update values on change
     const zoomSpeed = document.getElementById('zoomSpeed');
@@ -957,7 +1065,7 @@ function createSettingsMenu() {
         controls.maxDistance = parseFloat(this.value);
         document.getElementById('maxDistVal').textContent = this.value;
     });
-    document.getElementById('closeMenu').onclick = function() {
+    menu.querySelector('#closeMenu').onclick = function() {
         menu.remove();
         if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; }
     };
@@ -1031,6 +1139,8 @@ function createAnimationsMenu() {
     applyResponsiveMenu(menu);
     ensureSingleOpenMenu(menu, 'gltf-anims');
     document.body.appendChild(menu);
+    makeMenuDraggable(menu);
+    centerMenuOnOpen(menu);
 
     function buildList() {
         const list = document.getElementById('anim-clips-list');
@@ -1154,7 +1264,7 @@ function createAnimationsMenu() {
             if (tSlider) tSlider.value = 0;
         });
     };
-    document.getElementById('closeAnimationsMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
+    menu.querySelector('#closeAnimationsMenu').onclick = function() { menu.remove(); if (window.__activeMenu === menu) { window.__activeMenu = null; window.__activeMenuTag = null; } };
 
     buildList();
 }
@@ -1163,6 +1273,40 @@ function init() {
     // Basic mobile detection for layout tweaks
     const isMobile = matchMedia('(pointer: coarse), (max-width: 768px)').matches;
     window.__isMobile = isMobile;
+    // Build desktop toolbar (only on desktop)
+    const desktopBar = document.getElementById('desktop-toolbar');
+    if (desktopBar && !isMobile) {
+        const addBtn = (iconText, handler, title) => {
+            const b = document.createElement('button');
+            b.textContent = iconText;
+            if (title) b.title = title;
+            b.onclick = handler;
+            return b;
+        };
+        const sep = () => { const d = document.createElement('div'); d.className = 'group-sep'; return d; };
+
+        // File
+        desktopBar.appendChild(addBtn('📂', () => document.getElementById('upload').click(), 'Open Model'));
+        desktopBar.appendChild(sep());
+        // Camera
+        desktopBar.appendChild(addBtn('🎥', () => toggleMenu('cam-controls', createCameraMenu), 'Camera Controls'));
+        desktopBar.appendChild(addBtn('🔭', () => toggleMenu('cam-view', createCameraViewSettingsMenu), 'View Settings'));
+        desktopBar.appendChild(addBtn('▶️', () => toggleMenu('cam-anim', createCameraAnimationMenu), 'Camera Animation'));
+        desktopBar.appendChild(addBtn('🗄️', () => toggleMenu('cam-export', createCameraExportMenu), 'Export Camera JSON'));
+        desktopBar.appendChild(sep());
+        // Scene
+        desktopBar.appendChild(addBtn('💡', () => toggleMenu('lighting', createLightingMenu), 'Lighting'));
+        desktopBar.appendChild(addBtn('🖼️', () => toggleMenu('background', createBackgroundMenu), 'Background'));
+        desktopBar.appendChild(addBtn('🧵', () => toggleMenu('texture', createTextureMenu), 'Texture'));
+        desktopBar.appendChild(addBtn('🎨', () => toggleMenu('material', createMaterialFixMenu), 'Material Fixes'));
+        desktopBar.appendChild(addBtn('🧩', () => toggleMenu('scene', createSceneSettingsMenu), 'Scene Settings'));
+        desktopBar.appendChild(sep());
+        // Animations
+        desktopBar.appendChild(addBtn('🎞️', () => toggleMenu('gltf-anims', createAnimationsMenu), 'GLTF Animations'));
+        desktopBar.appendChild(sep());
+        // Zoom Settings
+        desktopBar.appendChild(addBtn('🔧', () => toggleMenu('zoom-settings', createSettingsMenu), 'Zoom Settings'));
+    }
     // Add scene settings menu button
     const sceneBtn = document.createElement('button');
     sceneBtn.textContent = 'Scene Settings';
@@ -1178,7 +1322,8 @@ function init() {
     sceneBtn.style.cursor = 'pointer';
     sceneBtn.onclick = createSceneSettingsMenu;
     document.body.appendChild(sceneBtn);
-    if (isMobile) sceneBtn.style.display = 'none';
+    // Hidden on both mobile and desktop (desktop toolbar replaces it)
+    sceneBtn.style.display = 'none';
     // Add lighting menu button
     const lightBtn = document.createElement('button');
     lightBtn.textContent = 'Lighting';
@@ -1194,7 +1339,7 @@ function init() {
     lightBtn.style.cursor = 'pointer';
     lightBtn.onclick = createLightingMenu;
     document.body.appendChild(lightBtn);
-    if (isMobile) lightBtn.style.display = 'none';
+    lightBtn.style.display = 'none';
     // Add background menu button
     const bgBtn = document.createElement('button');
     bgBtn.textContent = 'Background';
@@ -1210,7 +1355,7 @@ function init() {
     bgBtn.style.cursor = 'pointer';
     bgBtn.onclick = createBackgroundMenu;
     document.body.appendChild(bgBtn);
-    if (isMobile) bgBtn.style.display = 'none';
+    bgBtn.style.display = 'none';
     // Add texture menu button
     const texBtn = document.createElement('button');
     texBtn.textContent = 'Texture';
@@ -1226,7 +1371,7 @@ function init() {
     texBtn.style.cursor = 'pointer';
     texBtn.onclick = createTextureMenu;
     document.body.appendChild(texBtn);
-    if (isMobile) texBtn.style.display = 'none';
+    texBtn.style.display = 'none';
     // Add material fix menu button
     const matFixBtn = document.createElement('button');
     matFixBtn.textContent = 'Material Fixes';
@@ -1242,7 +1387,7 @@ function init() {
     matFixBtn.style.cursor = 'pointer';
     matFixBtn.onclick = createMaterialFixMenu;
     document.body.appendChild(matFixBtn);
-    if (isMobile) matFixBtn.style.display = 'none';
+    matFixBtn.style.display = 'none';
     // Add camera export menu button
     const exportBtn = document.createElement('button');
     exportBtn.textContent = 'Export Camera JSON';
@@ -1258,7 +1403,7 @@ function init() {
     exportBtn.style.cursor = 'pointer';
     exportBtn.onclick = createCameraExportMenu;
     document.body.appendChild(exportBtn);
-    if (isMobile) exportBtn.style.display = 'none';
+    exportBtn.style.display = 'none';
     // Add camera view settings menu button
     const viewBtn = document.createElement('button');
     viewBtn.textContent = 'Camera View Settings';
@@ -1274,7 +1419,7 @@ function init() {
     viewBtn.style.cursor = 'pointer';
     viewBtn.onclick = createCameraViewSettingsMenu;
     document.body.appendChild(viewBtn);
-    if (isMobile) viewBtn.style.display = 'none';
+    viewBtn.style.display = 'none';
     // Add camera animation menu button
     const animBtn = document.createElement('button');
     animBtn.textContent = 'Camera Animation';
@@ -1290,7 +1435,7 @@ function init() {
     animBtn.style.cursor = 'pointer';
     animBtn.onclick = createCameraAnimationMenu;
     document.body.appendChild(animBtn);
-    if (isMobile) animBtn.style.display = 'none';
+    animBtn.style.display = 'none';
     // Add animations menu button
     const gltfAnimBtn = document.createElement('button');
     gltfAnimBtn.textContent = 'Animations';
@@ -1306,7 +1451,7 @@ function init() {
     gltfAnimBtn.style.cursor = 'pointer';
     gltfAnimBtn.onclick = createAnimationsMenu;
     document.body.appendChild(gltfAnimBtn);
-    if (isMobile) gltfAnimBtn.style.display = 'none';
+    gltfAnimBtn.style.display = 'none';
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf0f0f0); // light gray
 
@@ -1425,7 +1570,7 @@ function init() {
     Object.assign(btn.style, { position:'fixed', top:'16px', right:'16px', zIndex:999, padding:'8px 16px', fontSize:'14px', borderRadius:'6px', border:'1px solid #aaa', background:'#fff', cursor:'pointer' });
     btn.onclick = createSettingsMenu;
     document.body.appendChild(btn);
-    if (isMobile) btn.style.display = 'none';
+    btn.style.display = 'none';
 
     // Add camera controls menu button
     const camBtn = document.createElement('button');
@@ -1442,7 +1587,7 @@ function init() {
     camBtn.style.cursor = 'pointer';
     camBtn.onclick = createCameraMenu;
     document.body.appendChild(camBtn);
-    if (isMobile) camBtn.style.display = 'none';
+    camBtn.style.display = 'none';
 
     // Populate mobile toolbar with icon-only buttons for small screens
     const mobileBar = document.getElementById('mobile-toolbar');

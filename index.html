@@ -31,11 +31,9 @@
             cursor: pointer;
             user-select: none;
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            display: none; /* hidden: replaced by desktop/mobile toolbars */
         }
-        @media (pointer: coarse), (max-width: 768px) {
-            /* Hide standalone upload label on phones; use toolbar icon instead */
-            #upload-label { display: none; }
-        }
+        /* On mobile we use the icon in the mobile toolbar; on desktop we use the desktop toolbar button */
 
         /* Toolbar container for mobile */
         #mobile-toolbar {
@@ -44,7 +42,7 @@
             left: calc(env(safe-area-inset-left, 0px) + 8px);
             right: calc(env(safe-area-inset-right, 0px) + 8px);
             z-index: 1050;
-            display: none;
+            display: none; /* hidden by default; shown only on mobile via media query */
             gap: 8px;
             padding: 8px;
             overflow-x: auto;
@@ -53,7 +51,6 @@
             border-radius: 10px;
             -webkit-overflow-scrolling: touch;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            display: flex;
             align-items: center;
             flex-wrap: nowrap;
             white-space: nowrap;
@@ -62,25 +59,64 @@
         #mobile-toolbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
 
         @media (pointer: coarse), (max-width: 768px) {
-            #mobile-toolbar { display: flex; }
+            #mobile-toolbar { display: flex; } 
             #mobile-toolbar button {
                 width: 44px;
                 height: 44px;
                 padding: 0;
                 border-radius: 10px;
                 font-size: 22px;
-                line-height: 44px;
+                display: block; /* Changed from none to block */
                 text-align: center;
                 border: 1px solid var(--ui-border);
                 background: var(--ui-bg);
                 color: var(--ui-fg);
             }
         }
+
+        /* Desktop toolbar */
+        #desktop-toolbar {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 1040;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            padding: 6px;
+            background: rgba(255,255,255,0.92);
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            color: #000;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        }
+        #desktop-toolbar button {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            font-size: 18px; /* icon size */
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--ui-border);
+            background: var(--ui-bg);
+            color: var(--ui-fg);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #desktop-toolbar .group-sep { width: 1px; height: 24px; background: #ddd; margin: 0 6px; }
+        @media (pointer: coarse), (max-width: 768px) {
+            #desktop-toolbar { display: none; }
+        }
     </style>
 </head>
 <body>
     <input type="file" id="upload" accept=".glb,.gltf" />
     <label id="upload-label" for="upload">Open Model</label>
+    <div id="desktop-toolbar" aria-label="Desktop Tools"></div>
     <div id="mobile-toolbar" aria-label="Tools"></div>
         <script type="importmap">
             {
