@@ -10,7 +10,7 @@ function applyResponsiveMenu(menu) {
     menu.style.minWidth = 'auto';
     menu.style.width = 'auto';
     menu.style.maxHeight = '70vh';
-    menu.style.overflow = 'auto';
+        menu.style.position = 'absolute';
     menu.style.fontSize = '16px';
     menu.style.padding = '14px';
 }
@@ -1121,6 +1121,7 @@ function createAnimationsMenu() {
 function init() {
     // Basic mobile detection for layout tweaks
     const isMobile = matchMedia('(pointer: coarse), (max-width: 768px)').matches;
+    window.__isMobile = isMobile;
     // Add scene settings menu button
     const sceneBtn = document.createElement('button');
     sceneBtn.textContent = 'Scene Settings';
@@ -1136,6 +1137,7 @@ function init() {
     sceneBtn.style.cursor = 'pointer';
     sceneBtn.onclick = createSceneSettingsMenu;
     document.body.appendChild(sceneBtn);
+    if (isMobile) sceneBtn.style.display = 'none';
     // Add lighting menu button
     const lightBtn = document.createElement('button');
     lightBtn.textContent = 'Lighting';
@@ -1151,6 +1153,7 @@ function init() {
     lightBtn.style.cursor = 'pointer';
     lightBtn.onclick = createLightingMenu;
     document.body.appendChild(lightBtn);
+    if (isMobile) lightBtn.style.display = 'none';
     // Add background menu button
     const bgBtn = document.createElement('button');
     bgBtn.textContent = 'Background';
@@ -1166,6 +1169,7 @@ function init() {
     bgBtn.style.cursor = 'pointer';
     bgBtn.onclick = createBackgroundMenu;
     document.body.appendChild(bgBtn);
+    if (isMobile) bgBtn.style.display = 'none';
     // Add texture menu button
     const texBtn = document.createElement('button');
     texBtn.textContent = 'Texture';
@@ -1181,6 +1185,7 @@ function init() {
     texBtn.style.cursor = 'pointer';
     texBtn.onclick = createTextureMenu;
     document.body.appendChild(texBtn);
+    if (isMobile) texBtn.style.display = 'none';
     // Add material fix menu button
     const matFixBtn = document.createElement('button');
     matFixBtn.textContent = 'Material Fixes';
@@ -1196,6 +1201,7 @@ function init() {
     matFixBtn.style.cursor = 'pointer';
     matFixBtn.onclick = createMaterialFixMenu;
     document.body.appendChild(matFixBtn);
+    if (isMobile) matFixBtn.style.display = 'none';
     // Add camera export menu button
     const exportBtn = document.createElement('button');
     exportBtn.textContent = 'Export Camera JSON';
@@ -1211,6 +1217,7 @@ function init() {
     exportBtn.style.cursor = 'pointer';
     exportBtn.onclick = createCameraExportMenu;
     document.body.appendChild(exportBtn);
+    if (isMobile) exportBtn.style.display = 'none';
     // Add camera view settings menu button
     const viewBtn = document.createElement('button');
     viewBtn.textContent = 'Camera View Settings';
@@ -1226,6 +1233,7 @@ function init() {
     viewBtn.style.cursor = 'pointer';
     viewBtn.onclick = createCameraViewSettingsMenu;
     document.body.appendChild(viewBtn);
+    if (isMobile) viewBtn.style.display = 'none';
     // Add camera animation menu button
     const animBtn = document.createElement('button');
     animBtn.textContent = 'Camera Animation';
@@ -1241,6 +1249,7 @@ function init() {
     animBtn.style.cursor = 'pointer';
     animBtn.onclick = createCameraAnimationMenu;
     document.body.appendChild(animBtn);
+    if (isMobile) animBtn.style.display = 'none';
     // Add animations menu button
     const gltfAnimBtn = document.createElement('button');
     gltfAnimBtn.textContent = 'Animations';
@@ -1256,6 +1265,7 @@ function init() {
     gltfAnimBtn.style.cursor = 'pointer';
     gltfAnimBtn.onclick = createAnimationsMenu;
     document.body.appendChild(gltfAnimBtn);
+    if (isMobile) gltfAnimBtn.style.display = 'none';
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf0f0f0); // light gray
 
@@ -1294,7 +1304,8 @@ function init() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.zoomSpeed = 0.8;
-    controls.enableZoom = true;
+    // Disable built-in zoom to avoid conflicts with custom smooth zoom (wheel/pinch)
+    controls.enableZoom = false;
     controls.enablePan = true;
     controls.screenSpacePanning = true;
     controls.minDistance = 1;
@@ -1373,6 +1384,7 @@ function init() {
     Object.assign(btn.style, { position:'fixed', top:'16px', right:'16px', zIndex:999, padding:'8px 16px', fontSize:'14px', borderRadius:'6px', border:'1px solid #aaa', background:'#fff', cursor:'pointer' });
     btn.onclick = createSettingsMenu;
     document.body.appendChild(btn);
+    if (isMobile) btn.style.display = 'none';
 
     // Add camera controls menu button
     const camBtn = document.createElement('button');
@@ -1389,30 +1401,37 @@ function init() {
     camBtn.style.cursor = 'pointer';
     camBtn.onclick = createCameraMenu;
     document.body.appendChild(camBtn);
+    if (isMobile) camBtn.style.display = 'none';
 
-    // Populate mobile toolbar with key actions for small screens
+    // Populate mobile toolbar with icon-only buttons for small screens
     const mobileBar = document.getElementById('mobile-toolbar');
     if (mobileBar && isMobile) {
-        const mkBtn = (label, handler) => {
+        const mkBtn = (iconText, handler, title) => {
             const b = document.createElement('button');
-            b.textContent = label;
-            b.style.padding = '10px 12px';
-            b.style.fontSize = '14px';
+            b.textContent = iconText;
+            b.title = title || '';
+            b.style.padding = '0';
+            b.style.fontSize = '22px';
+            b.style.width = '44px';
+            b.style.height = '44px';
             b.style.border = '1px solid #aaa';
-            b.style.borderRadius = '6px';
+            b.style.borderRadius = '10px';
             b.style.background = '#fff';
             b.style.whiteSpace = 'nowrap';
             b.onclick = handler;
             return b;
         };
-        mobileBar.appendChild(mkBtn('Camera', createCameraMenu));
-        mobileBar.appendChild(mkBtn('View', createCameraViewSettingsMenu));
-        mobileBar.appendChild(mkBtn('Anim', createCameraAnimationMenu));
-        mobileBar.appendChild(mkBtn('GLTF Anim', createAnimationsMenu));
-        mobileBar.appendChild(mkBtn('Lighting', createLightingMenu));
-        mobileBar.appendChild(mkBtn('BG', createBackgroundMenu));
-        mobileBar.appendChild(mkBtn('Material', createMaterialFixMenu));
-        mobileBar.appendChild(mkBtn('Scene', createSceneSettingsMenu));
+        // Open (file) icon triggers hidden input
+        const openHandler = () => document.getElementById('upload').click();
+        mobileBar.appendChild(mkBtn('📂', openHandler, 'Open Model'));
+        mobileBar.appendChild(mkBtn('🎥', createCameraMenu, 'Camera Controls'));
+        mobileBar.appendChild(mkBtn('🔭', createCameraViewSettingsMenu, 'View Settings'));
+        mobileBar.appendChild(mkBtn('▶️', createCameraAnimationMenu, 'Camera Animation'));
+        mobileBar.appendChild(mkBtn('🎞️', createAnimationsMenu, 'GLTF Animations'));
+        mobileBar.appendChild(mkBtn('💡', createLightingMenu, 'Lighting'));
+        mobileBar.appendChild(mkBtn('🖼️', createBackgroundMenu, 'Background'));
+        mobileBar.appendChild(mkBtn('🎨', createMaterialFixMenu, 'Material Fixes'));
+        mobileBar.appendChild(mkBtn('🧩', createSceneSettingsMenu, 'Scene Settings'));
     }
 
     window.addEventListener('resize', onWindowResize, false);
