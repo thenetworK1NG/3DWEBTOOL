@@ -184,7 +184,9 @@ function createSceneSettingsMenu() {
             fov: kf.fov,
             near: kf.near,
             far: kf.far,
-            quaternion: { x: kf.quaternion.x, y: kf.quaternion.y, z: kf.quaternion.z, w: kf.quaternion.w }
+            quaternion: { x: kf.quaternion.x, y: kf.quaternion.y, z: kf.quaternion.z, w: kf.quaternion.w },
+            duration: kf.duration || ANIMATION_SPEED, // Include duration in export
+            modelAnimTime: kf.modelAnimTime || 0 // Include model animation time in export
         })),
         lighting: {
             hemisphere: hemi ? { intensity: hemi.intensity, color: hemi.color.getHex(), groundColor: hemi.groundColor.getHex() } : null,
@@ -232,7 +234,9 @@ function createSceneSettingsMenu() {
                         fov: kf.fov,
                         near: kf.near,
                         far: kf.far,
-                        quaternion: new THREE.Quaternion(kf.quaternion.x, kf.quaternion.y, kf.quaternion.z, kf.quaternion.w)
+                        quaternion: new THREE.Quaternion(kf.quaternion.x, kf.quaternion.y, kf.quaternion.z, kf.quaternion.w),
+                        duration: kf.duration || ANIMATION_SPEED, // Use saved duration or default
+                        modelAnimTime: kf.modelAnimTime || 0 // Use saved model time or default
                     }));
                     if (typeof updateKeyframeList === 'function') updateKeyframeList();
                     if (typeof window.updateKeyframeList === 'function') window.updateKeyframeList();
@@ -607,7 +611,9 @@ window.createCameraExportMenu = createCameraExportMenu;
                         fov: kf.fov,
                         near: kf.near,
                         far: kf.far,
-                        quaternion: new THREE.Quaternion(kf.quaternion.x, kf.quaternion.y, kf.quaternion.z, kf.quaternion.w)
+                        quaternion: new THREE.Quaternion(kf.quaternion.x, kf.quaternion.y, kf.quaternion.z, kf.quaternion.w),
+                        duration: kf.duration || ANIMATION_SPEED, // Use saved duration or default
+                        modelAnimTime: kf.modelAnimTime || 0 // Use saved model time or default
                     }));
                     // Update preview and keyframe UI if open
                     document.getElementById('exportJsonPreview').textContent = JSON.stringify(data, null, 2);
@@ -641,7 +647,9 @@ window.createCameraExportMenu = createCameraExportMenu;
             fov: kf.fov,
             near: kf.near,
             far: kf.far,
-            quaternion: { x: kf.quaternion.x, y: kf.quaternion.y, z: kf.quaternion.z, w: kf.quaternion.w }
+            quaternion: { x: kf.quaternion.x, y: kf.quaternion.y, z: kf.quaternion.z, w: kf.quaternion.w },
+            duration: kf.duration || ANIMATION_SPEED, // Include duration in export
+            modelAnimTime: kf.modelAnimTime || 0 // Include model animation time in export
         }))
     };
     // Show preview
@@ -728,9 +736,34 @@ function createCameraAnimationMenu() {
         <b>Camera Animation</b><br><br>
         <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
             <button id="cam-anim-add-keyframe">Add Keyframe</button>
-            <button id="cam-anim-play">Play Animation</button>
+            <button id="cam-anim-play">Play Camera Only</button>
+            <button id="cam-anim-play-sync">Play Camera + Model</button>
+            <button id="cam-anim-stop">Stop All</button>
             <button id="cam-anim-clear">Clear Keyframes</button>
+            <div style="margin-top:8px; width:100%; text-align:left;">
+                <label>Animation Speed: <input id="animationSpeed" type="range" min="200" max="5000" step="100" value="${ANIMATION_SPEED}"> <span id="animationSpeedVal">${(ANIMATION_SPEED/1000).toFixed(1)}s</span></label>
+            </div>
+            <div id="model-anim-status" style="margin-top:8px; width:100%; text-align:left; font-size:12px; color:#666; background:#f0f0f0; padding:6px; border-radius:4px;"></div>
+            <div id="model-anim-controls" style="margin-top:8px; width:100%; text-align:left; display:none;">
+                <div style="background:#e8f4fd; border:1px solid #bee5eb; border-radius:4px; padding:8px;">
+                    <b style="font-size:13px;">Model Animation Preview</b><br>
+                    <div style="margin:6px 0; display:flex; gap:4px; align-items:center;">
+                        <button id="model-anim-preview-play" style="font-size:12px; padding:2px 6px;">▶</button>
+                        <button id="model-anim-preview-pause" style="font-size:12px; padding:2px 6px;">⏸</button>
+                        <button id="model-anim-preview-stop" style="font-size:12px; padding:2px 6px;">⏹</button>
+                    </div>
+                    <div style="margin:6px 0;">
+                        <label style="font-size:12px;">Time: <input id="model-anim-time-scrubber" type="range" min="0" max="1" step="0.01" value="0" style="width:120px;"> <span id="model-anim-time-display">0.00s / 0.00s</span></label>
+                    </div>
+                    <div style="font-size:11px; color:#666; margin-top:4px;">
+                        Scrub through model animation to position camera keyframes at specific moments
+                    </div>
+                </div>
+            </div>
             <div id="cam-anim-keyframes" style="margin-top:10px; width:100%; text-align:left; font-size:13px; background:#f7f7f7; border:1px solid #ddd; border-radius:4px; min-height:40px; max-height:120px; overflow-y:auto; padding:6px;"></div>
+            <div style="font-size:11px; color:#888; margin-top:4px; text-align:center;">
+                💡 Click on a keyframe to jump camera to that position
+            </div>
         </div>
         <button id="closeCameraAnimMenu" style="margin-top:10px;">Close</button>
     `;
@@ -770,9 +803,11 @@ function createCameraAnimationMenu() {
             }
             const start = keyframes[i];
             const end = keyframes[i+1];
+            // Use the duration from the destination keyframe (end)
+            const segmentDuration = end.duration || duration;
             const startTime = performance.now();
             function step(now) {
-                let t = Math.min((now - startTime) / duration, 1);
+                let t = Math.min((now - startTime) / segmentDuration, 1);
                 // Interpolate target, zoom, rotation, FOV, near, far
                 const newTarget = lerpVec3(start.target, end.target, t);
                 const newZoom = lerp(start.zoom, end.zoom, t);
@@ -818,6 +853,219 @@ function createCameraAnimationMenu() {
         animateToNext();
     }
 
+    // Synchronized Camera + Model Animation
+    function playSynchronizedAnimation() {
+        if (animating || !window.cameraKeyframes || window.cameraKeyframes.length < 2) return;
+        
+        console.log('Starting synchronized animation...');
+        
+        // Start camera animation
+        animateKeyframes(window.cameraKeyframes);
+        
+        // Start all model animations if available
+        if (mixer && gltfClips && gltfClips.length > 0) {
+            let startedAnimations = 0;
+            gltfClips.forEach((clip, i) => {
+                const action = ensureModelAction(i);
+                if (action) {
+                    action.reset(); // Start from beginning
+                    action.paused = false;
+                    action.play();
+                    startedAnimations++;
+                    console.log(`Started model animation: ${clip.name || `Clip ${i+1}`}`);
+                }
+            });
+            
+            if (startedAnimations > 0) {
+                console.log(`Synchronized playback: Camera + ${startedAnimations} model animation(s)`);
+            } else {
+                console.log('Synchronized playback: Camera only (no model animations available)');
+            }
+        } else {
+            console.log('Synchronized playback: Camera only (no model loaded or no animations)');
+        }
+    }
+    
+    function stopAllAnimations() {
+        // Stop camera animation
+        if (animFrame) {
+            cancelAnimationFrame(animFrame);
+            animFrame = null;
+        }
+        animating = false;
+        
+        // Stop all model animations
+        let stoppedAnimations = 0;
+        if (animationActions && animationActions.size > 0) {
+            animationActions.forEach((action, i) => {
+                if (action.isRunning()) {
+                    action.stop();
+                    stoppedAnimations++;
+                }
+            });
+        }
+        
+        console.log(`Stopped all animations: Camera + ${stoppedAnimations} model animation(s)`);
+    }
+    
+    // Helper function to ensure model animation action exists
+    function ensureModelAction(i) {
+        if (!mixer || !model || !gltfClips[i]) return null;
+        if (!animationActions.has(i)) {
+            const action = mixer.clipAction(gltfClips[i]);
+            action.clampWhenFinished = true;
+            action.enabled = true;
+            animationActions.set(i, action);
+        }
+        return animationActions.get(i);
+    }
+
+    // Model Animation Preview Controls
+    let previewAnimationPlaying = false;
+    let maxAnimationDuration = 0;
+    
+    function updateAnimationDuration() {
+        maxAnimationDuration = 0;
+        if (gltfClips && gltfClips.length > 0) {
+            maxAnimationDuration = Math.max(...gltfClips.map(clip => clip.duration || 0));
+        }
+        
+        const scrubber = document.getElementById('model-anim-time-scrubber');
+        if (scrubber) {
+            scrubber.max = maxAnimationDuration;
+        }
+        updateTimeDisplay();
+    }
+    
+    function updateTimeDisplay() {
+        const display = document.getElementById('model-anim-time-display');
+        const scrubber = document.getElementById('model-anim-time-scrubber');
+        if (display && scrubber) {
+            const currentTime = parseFloat(scrubber.value);
+            display.textContent = `${currentTime.toFixed(2)}s / ${maxAnimationDuration.toFixed(2)}s`;
+        }
+    }
+    
+    function scrubModelAnimations(time) {
+        if (!mixer || !gltfClips || gltfClips.length === 0) return;
+        
+        // Ensure all animations are set up and paused at the specified time
+        gltfClips.forEach((clip, i) => {
+            const action = ensureModelAction(i);
+            if (action) {
+                if (!action.isRunning()) action.play();
+                action.paused = true;
+                action.time = Math.min(time, clip.duration || 0);
+            }
+        });
+        
+        // Force mixer update to apply the time change
+        mixer.update(0);
+        updateTimeDisplay();
+    }
+    
+    function playModelAnimationPreview() {
+        if (!mixer || !gltfClips || gltfClips.length === 0) return;
+        
+        previewAnimationPlaying = true;
+        gltfClips.forEach((clip, i) => {
+            const action = ensureModelAction(i);
+            if (action) {
+                action.paused = false;
+                if (!action.isRunning()) action.play();
+            }
+        });
+    }
+    
+    function pauseModelAnimationPreview() {
+        previewAnimationPlaying = false;
+        if (animationActions) {
+            animationActions.forEach(action => {
+                action.paused = true;
+            });
+        }
+    }
+    
+    function stopModelAnimationPreview() {
+        previewAnimationPlaying = false;
+        if (animationActions) {
+            animationActions.forEach(action => {
+                action.stop();
+            });
+        }
+        
+        const scrubber = document.getElementById('model-anim-time-scrubber');
+        if (scrubber) {
+            scrubber.value = 0;
+            updateTimeDisplay();
+        }
+    }
+    
+    // Update scrubber position during preview playback
+    function updateScrubberDuringPlayback() {
+        if (previewAnimationPlaying && animationActions.size > 0) {
+            const scrubber = document.getElementById('model-anim-time-scrubber');
+            if (scrubber) {
+                // Get the time from the first active animation
+                const firstAction = animationActions.values().next().value;
+                if (firstAction && firstAction.isRunning()) {
+                    scrubber.value = firstAction.time;
+                    updateTimeDisplay();
+                }
+            }
+        }
+    }
+
+    // Camera Keyframe Navigation
+    let currentSelectedKeyframe = -1;
+    
+    function restoreCameraToKeyframe(keyframeIndex) {
+        if (!window.cameraKeyframes || keyframeIndex < 0 || keyframeIndex >= window.cameraKeyframes.length) {
+            return;
+        }
+        
+        const kf = window.cameraKeyframes[keyframeIndex];
+        
+        // Restore camera position and rotation
+        camera.position.copy(kf.position);
+        camera.quaternion.copy(kf.quaternion);
+        
+        // Restore camera target
+        controls.target.copy(kf.target);
+        
+        // Restore camera settings
+        camera.fov = kf.fov;
+        camera.near = kf.near;
+        camera.far = kf.far;
+        camera.updateProjectionMatrix();
+        
+        // Update zoom system
+        if (typeof window.targetZoom !== 'undefined') {
+            window.targetZoom = kf.zoom;
+        }
+        if (typeof currentZoom !== 'undefined') {
+            currentZoom = kf.zoom;
+        }
+        
+        // Restore model animation time if available
+        if (kf.modelAnimTime !== undefined) {
+            const scrubber = document.getElementById('model-anim-time-scrubber');
+            if (scrubber) {
+                scrubber.value = kf.modelAnimTime;
+                scrubModelAnimations(kf.modelAnimTime);
+            }
+        }
+        
+        // Update controls
+        controls.update();
+        
+        // Update UI to show which keyframe is selected
+        currentSelectedKeyframe = keyframeIndex;
+        updateKeyframeList();
+        
+        console.log(`Jumped to keyframe #${keyframeIndex + 1}`);
+    }
+
     // Keyframe storage (global for now)
     if (!window.cameraKeyframes) window.cameraKeyframes = [];
 
@@ -827,56 +1075,151 @@ function createCameraAnimationMenu() {
             listDiv.innerHTML = '<i>No keyframes yet.</i>';
             return;
         }
-        listDiv.innerHTML = window.cameraKeyframes.map((kf, i) =>
-            `<div style='margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #eee;'>
-                <b>#${i+1}</b> 
-                <button data-kf='${i}' class='kf-move-up' ${i===0?'disabled':''} title='Move Up'>↑</button>
-                <button data-kf='${i}' class='kf-move-down' ${i===window.cameraKeyframes.length-1?'disabled':''} title='Move Down'>↓</button>
-                <button data-kf='${i}' class='kf-delete' title='Delete'>✕</button><br>
-                <span style='color:#555'>Pos:</span> [${kf.position.x.toFixed(2)}, ${kf.position.y.toFixed(2)}, ${kf.position.z.toFixed(2)}]<br>
-                <span style='color:#555'>Target:</span> [${kf.target.x.toFixed(2)}, ${kf.target.y.toFixed(2)}, ${kf.target.z.toFixed(2)}]<br>
-                <span style='color:#555'>Zoom:</span> ${kf.zoom.toFixed(2)}<br>
-                <span style='color:#555'>FOV:</span> ${kf.fov.toFixed(2)}<br>
-                <span style='color:#555'>Near:</span> ${kf.near.toFixed(2)}<br>
-                <span style='color:#555'>Far:</span> ${kf.far.toFixed(2)}<br>
-                <span style='color:#555'>Rot:</span> [${kf.quaternion.x.toFixed(2)}, ${kf.quaternion.y.toFixed(2)}, ${kf.quaternion.z.toFixed(2)}, ${kf.quaternion.w.toFixed(2)}]
+        
+        // Migration: add duration to existing keyframes that don't have it
+        window.cameraKeyframes.forEach(kf => {
+            if (kf.duration === undefined) {
+                kf.duration = ANIMATION_SPEED;
+            }
+        });
+        
+        listDiv.innerHTML = window.cameraKeyframes.map((kf, i) => {
+            const transitionLabel = i === 0 ? '(Start)' : `(${(kf.duration/1000).toFixed(1)}s from #${i})`;
+            const modelTimeLabel = kf.modelAnimTime !== undefined ? ` @ ${kf.modelAnimTime.toFixed(2)}s` : '';
+            const isSelected = i === currentSelectedKeyframe;
+            const selectedStyle = isSelected ? 'background:#d4edda; border-left:4px solid #28a745;' : '';
+            const clickableStyle = 'cursor:pointer; transition:background-color 0.2s;';
+            
+            return `<div class='keyframe-item' data-kf='${i}' style='margin-bottom:6px; padding:6px; border-bottom:1px solid #eee; ${selectedStyle} ${clickableStyle}' 
+                         onmouseover='this.style.backgroundColor="#f8f9fa"' 
+                         onmouseout='this.style.backgroundColor="${isSelected ? "#d4edda" : "transparent"}"'>
+                <div style='margin-bottom:4px;'>
+                    <b>#${i+1}</b> ${transitionLabel}${modelTimeLabel} ${isSelected ? '<span style="color:#28a745;">●</span>' : ''}
+                    <div style='float:right;'>
+                        <button data-kf='${i}' class='kf-move-up' ${i===0?'disabled':''} title='Move Up' style='font-size:10px; padding:1px 4px;'>↑</button>
+                        <button data-kf='${i}' class='kf-move-down' ${i===window.cameraKeyframes.length-1?'disabled':''} title='Move Down' style='font-size:10px; padding:1px 4px;'>↓</button>
+                        <button data-kf='${i}' class='kf-delete' title='Delete' style='font-size:10px; padding:1px 4px;'>✕</button>
+                        ${kf.modelAnimTime !== undefined ? `<button data-kf='${i}' class='kf-goto-time' title='Go to Model Time' style='font-size:10px; padding:1px 4px;'>⏰</button>` : ''}
+                    </div>
+                </div>
+                ${i > 0 ? `<div style='margin:4px 0;'>
+                    <label style='font-size:12px;'>Transition Time: 
+                        <input data-kf='${i}' class='kf-duration' type='range' min='200' max='5000' step='100' value='${kf.duration}' style='width:80px;'> 
+                        <span class='kf-duration-val'>${(kf.duration/1000).toFixed(1)}s</span>
+                    </label>
+                </div>` : ''}
+                <div style='font-size:11px; color:#666;'>
+                    <span style='color:#555'>Pos:</span> [${kf.position.x.toFixed(2)}, ${kf.position.y.toFixed(2)}, ${kf.position.z.toFixed(2)}] •
+                    <span style='color:#555'>Target:</span> [${kf.target.x.toFixed(2)}, ${kf.target.y.toFixed(2)}, ${kf.target.z.toFixed(2)}]<br>
+                    <span style='color:#555'>Zoom:</span> ${kf.zoom.toFixed(2)} • 
+                    <span style='color:#555'>FOV:</span> ${kf.fov.toFixed(2)} • 
+                    <span style='color:#555'>Near:</span> ${kf.near.toFixed(2)} • 
+                    <span style='color:#555'>Far:</span> ${kf.far.toFixed(2)}
+                </div>
             </div>`
-        ).join('');
+        }).join('');
         // Add event listeners for move/delete
         listDiv.querySelectorAll('.kf-delete').forEach(btn => {
-            btn.onclick = function() {
+            btn.onclick = function(e) {
+                e.stopPropagation(); // Prevent keyframe click
                 const idx = parseInt(this.getAttribute('data-kf'));
                 window.cameraKeyframes.splice(idx, 1);
+                // Reset selection if deleted keyframe was selected
+                if (currentSelectedKeyframe === idx) {
+                    currentSelectedKeyframe = -1;
+                } else if (currentSelectedKeyframe > idx) {
+                    currentSelectedKeyframe--; // Adjust selection index
+                }
                 updateKeyframeList();
             };
         });
         listDiv.querySelectorAll('.kf-move-up').forEach(btn => {
-            btn.onclick = function() {
+            btn.onclick = function(e) {
+                e.stopPropagation(); // Prevent keyframe click
                 const idx = parseInt(this.getAttribute('data-kf'));
                 if (idx > 0) {
                     const temp = window.cameraKeyframes[idx-1];
                     window.cameraKeyframes[idx-1] = window.cameraKeyframes[idx];
                     window.cameraKeyframes[idx] = temp;
+                    // Update selection
+                    if (currentSelectedKeyframe === idx) {
+                        currentSelectedKeyframe = idx - 1;
+                    } else if (currentSelectedKeyframe === idx - 1) {
+                        currentSelectedKeyframe = idx;
+                    }
                     updateKeyframeList();
                 }
             };
         });
         listDiv.querySelectorAll('.kf-move-down').forEach(btn => {
-            btn.onclick = function() {
+            btn.onclick = function(e) {
+                e.stopPropagation(); // Prevent keyframe click
                 const idx = parseInt(this.getAttribute('data-kf'));
                 if (idx < window.cameraKeyframes.length-1) {
                     const temp = window.cameraKeyframes[idx+1];
                     window.cameraKeyframes[idx+1] = window.cameraKeyframes[idx];
                     window.cameraKeyframes[idx] = temp;
+                    // Update selection
+                    if (currentSelectedKeyframe === idx) {
+                        currentSelectedKeyframe = idx + 1;
+                    } else if (currentSelectedKeyframe === idx + 1) {
+                        currentSelectedKeyframe = idx;
+                    }
                     updateKeyframeList();
                 }
             };
+        });
+        
+        // Add click listener for keyframe items
+        listDiv.querySelectorAll('.keyframe-item').forEach(item => {
+            item.onclick = function(e) {
+                // Only handle clicks on the main area, not buttons
+                if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+                    const idx = parseInt(this.getAttribute('data-kf'));
+                    restoreCameraToKeyframe(idx);
+                }
+            };
+        });
+        listDiv.querySelectorAll('.kf-duration').forEach(slider => {
+            slider.addEventListener('input', function(e) {
+                e.stopPropagation(); // Prevent keyframe click
+                const idx = parseInt(this.getAttribute('data-kf'));
+                const duration = parseInt(this.value);
+                window.cameraKeyframes[idx].duration = duration;
+                const valSpan = this.parentElement.querySelector('.kf-duration-val');
+                if (valSpan) valSpan.textContent = (duration/1000).toFixed(1) + 's';
+                // Update the transition label
+                updateKeyframeList();
+            });
+        });
+        listDiv.querySelectorAll('.kf-goto-time').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent keyframe click
+                const idx = parseInt(this.getAttribute('data-kf'));
+                const keyframe = window.cameraKeyframes[idx];
+                if (keyframe && keyframe.modelAnimTime !== undefined) {
+                    // Set model animation to this time
+                    const scrubber = document.getElementById('model-anim-time-scrubber');
+                    if (scrubber) {
+                        scrubber.value = keyframe.modelAnimTime;
+                        scrubModelAnimations(keyframe.modelAnimTime);
+                    }
+                }
+            });
         });
     }
 
     document.getElementById('cam-anim-add-keyframe').onclick = function() {
         // Calculate zoom (distance from camera to target)
         const zoom = camera.position.distanceTo(controls.target);
+        
+        // Get current model animation time if available
+        let modelAnimTime = 0;
+        const scrubber = document.getElementById('model-anim-time-scrubber');
+        if (scrubber) {
+            modelAnimTime = parseFloat(scrubber.value);
+        }
+        
         window.cameraKeyframes.push({
             position: camera.position.clone(),
             target: controls.target.clone(),
@@ -884,8 +1227,13 @@ function createCameraAnimationMenu() {
             quaternion: camera.quaternion.clone(),
             fov: camera.fov,
             near: camera.near,
-            far: camera.far
+            far: camera.far,
+            duration: ANIMATION_SPEED, // Default duration for transition TO this keyframe
+            modelAnimTime: modelAnimTime // Store model animation time at this keyframe
         });
+        
+        // Auto-select the newly created keyframe
+        currentSelectedKeyframe = window.cameraKeyframes.length - 1;
         updateKeyframeList();
     };
     document.getElementById('cam-anim-clear').onclick = function() {
@@ -895,8 +1243,129 @@ function createCameraAnimationMenu() {
     document.getElementById('cam-anim-play').onclick = function() {
         if (animating) return;
         if (!window.cameraKeyframes || window.cameraKeyframes.length < 2) return;
-        animateKeyframes(window.cameraKeyframes, 1200); // 1.2s per segment
+        animateKeyframes(window.cameraKeyframes); // No longer passing global duration
     };
+    
+    document.getElementById('cam-anim-play-sync').onclick = function() {
+        playSynchronizedAnimation();
+    };
+    
+    document.getElementById('cam-anim-stop').onclick = function() {
+        stopAllAnimations();
+    };
+    
+    // Animation speed control
+    document.getElementById('animationSpeed').addEventListener('input', function() {
+        ANIMATION_SPEED = parseInt(this.value);
+        document.getElementById('animationSpeedVal').textContent = (ANIMATION_SPEED/1000).toFixed(1) + 's';
+    });
+    
+    // Update model animation status
+    function updateModelAnimationStatus() {
+        const statusDiv = document.getElementById('model-anim-status');
+        const controlsDiv = document.getElementById('model-anim-controls');
+        if (!statusDiv) return;
+        
+        if (!model) {
+            statusDiv.innerHTML = '⚠️ No model loaded';
+            if (controlsDiv) controlsDiv.style.display = 'none';
+            return;
+        }
+        
+        if (!gltfClips || gltfClips.length === 0) {
+            statusDiv.innerHTML = '⚠️ No model animations available';
+            if (controlsDiv) controlsDiv.style.display = 'none';
+            return;
+        }
+        
+        const animCount = gltfClips.length;
+        const animNames = gltfClips.map(clip => clip.name || 'Unnamed').slice(0, 3);
+        const nameList = animNames.join(', ') + (animCount > 3 ? '...' : '');
+        statusDiv.innerHTML = `✅ ${animCount} model animation(s): ${nameList}`;
+        
+        // Show animation controls
+        if (controlsDiv) {
+            controlsDiv.style.display = 'block';
+            updateAnimationDuration();
+        }
+    }
+    
+    // Add event listeners for model animation preview controls
+    function setupModelAnimationControls() {
+        const playBtn = document.getElementById('model-anim-preview-play');
+        const pauseBtn = document.getElementById('model-anim-preview-pause');
+        const stopBtn = document.getElementById('model-anim-preview-stop');
+        const scrubber = document.getElementById('model-anim-time-scrubber');
+        
+        if (playBtn) {
+            playBtn.onclick = playModelAnimationPreview;
+        }
+        
+        if (pauseBtn) {
+            pauseBtn.onclick = pauseModelAnimationPreview;
+        }
+        
+        if (stopBtn) {
+            stopBtn.onclick = stopModelAnimationPreview;
+        }
+        
+        if (scrubber) {
+            scrubber.addEventListener('input', function() {
+                const time = parseFloat(this.value);
+                scrubModelAnimations(time);
+            });
+        }
+        
+        // Update scrubber during playback
+        const updateInterval = setInterval(() => {
+            updateScrubberDuringPlayback();
+        }, 50); // Update 20 times per second
+        
+        // Store interval ID to clean up later if needed
+        window.modelAnimUpdateInterval = updateInterval;
+    }
+    
+    // Update status when menu opens
+    updateModelAnimationStatus();
+    setupModelAnimationControls();
+    
+    // Add keyboard navigation for keyframes
+    function handleKeyframeNavigation(e) {
+        if (!window.cameraKeyframes || window.cameraKeyframes.length === 0) return;
+        
+        // Only handle keys when camera animation menu is open
+        const menu = document.querySelector('#cam-anim-keyframes');
+        if (!menu) return;
+        
+        let handled = false;
+        
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            // Previous keyframe
+            if (currentSelectedKeyframe > 0) {
+                restoreCameraToKeyframe(currentSelectedKeyframe - 1);
+            } else if (currentSelectedKeyframe === -1 && window.cameraKeyframes.length > 0) {
+                restoreCameraToKeyframe(window.cameraKeyframes.length - 1);
+            }
+            handled = true;
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            // Next keyframe
+            if (currentSelectedKeyframe < window.cameraKeyframes.length - 1) {
+                restoreCameraToKeyframe(currentSelectedKeyframe + 1);
+            } else if (currentSelectedKeyframe === -1 && window.cameraKeyframes.length > 0) {
+                restoreCameraToKeyframe(0);
+            }
+            handled = true;
+        }
+        
+        if (handled) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }
+    
+    // Add event listener for keyboard navigation
+    document.addEventListener('keydown', handleKeyframeNavigation);
+    
     // Update list on open
     updateKeyframeList();
     menu.querySelector('#closeCameraAnimMenu').onclick = function() {
@@ -1084,6 +1553,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // --- Zoom Smoothness Constants ---
 let ZOOM_SPEED = 0.05; // Match reference project for smooth, small steps
 const ZOOM_SMOOTHING = 0.1; // Match reference project
+
+// --- Camera Animation Speed Constants ---
+let ANIMATION_SPEED = 1200; // Default duration in milliseconds per keyframe segment
 
 let scene, camera, renderer, controls, model;
 // --- Animation globals ---
@@ -1273,6 +1745,9 @@ function init() {
     // Basic mobile detection for layout tweaks
     const isMobile = matchMedia('(pointer: coarse), (max-width: 768px)').matches;
     window.__isMobile = isMobile;
+    
+    // Add initial help text
+    addInitialHelpText();
     // Build desktop toolbar (only on desktop)
     const desktopBar = document.getElementById('desktop-toolbar');
     if (desktopBar && !isMobile) {
@@ -1303,6 +1778,10 @@ function init() {
         desktopBar.appendChild(sep());
         // Animations
         desktopBar.appendChild(addBtn('🎞️', () => toggleMenu('gltf-anims', createAnimationsMenu), 'GLTF Animations'));
+        desktopBar.appendChild(sep());
+        // Export
+        desktopBar.appendChild(addBtn('🌐', () => exportStandaloneWebsite(), 'Export Standalone Website'));
+        desktopBar.appendChild(addBtn('📱', () => togglePhonePreview(), 'Phone Preview Mode'));
         desktopBar.appendChild(sep());
         // Zoom Settings
         desktopBar.appendChild(addBtn('🔧', () => toggleMenu('zoom-settings', createSettingsMenu), 'Zoom Settings'));
@@ -1618,9 +2097,15 @@ function init() {
         mobileBar.appendChild(mkBtn('🖼️', () => toggleMenu('background', createBackgroundMenu), 'Background'));
         mobileBar.appendChild(mkBtn('🎨', () => toggleMenu('material', createMaterialFixMenu), 'Material Fixes'));
         mobileBar.appendChild(mkBtn('🧩', () => toggleMenu('scene', createSceneSettingsMenu), 'Scene Settings'));
+        mobileBar.appendChild(mkBtn('📱', () => togglePhonePreview(), 'Phone Preview'));
+        mobileBar.appendChild(mkBtn('🌐', () => exportStandaloneWebsite(), 'Export Website'));
     }
 
     window.addEventListener('resize', onWindowResize, false);
+    
+    // Drag and Drop functionality for model files
+    setupDragAndDrop();
+    
     animate();
 }
 
@@ -1641,7 +2126,1254 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+function setupDragAndDrop() {
+    // Create drag overlay for visual feedback
+    const dragOverlay = document.createElement('div');
+    dragOverlay.id = 'drag-overlay';
+    dragOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 123, 255, 0.1);
+        border: 3px dashed #007bff;
+        z-index: 10000;
+        display: none;
+        pointer-events: none;
+        backdrop-filter: blur(2px);
+    `;
+    
+    // Add text to overlay
+    const overlayText = document.createElement('div');
+    overlayText.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 24px;
+        font-weight: bold;
+        color: #007bff;
+        text-align: center;
+        font-family: system-ui, -apple-system, sans-serif;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    `;
+    overlayText.innerHTML = '🎯 Drop 3D Model Here<br><small style="font-size: 16px;">GLB or GLTF files</small>';
+    dragOverlay.appendChild(overlayText);
+    document.body.appendChild(dragOverlay);
+    
+    let dragCounter = 0;
+    
+    // File type validation
+    function isValidModelFile(file) {
+        const validExtensions = ['.glb', '.gltf'];
+        const validMimeTypes = ['model/gltf-binary', 'model/gltf+json', 'application/octet-stream'];
+        
+        const fileName = file.name.toLowerCase();
+        const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+        const hasValidMimeType = validMimeTypes.includes(file.type);
+        
+        return hasValidExtension || hasValidMimeType;
+    }
+    
+    // Drag enter
+    document.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        dragCounter++;
+        
+        // Check if dragged items contain files
+        if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+            // Update overlay text based on file types if possible
+            let hasModelFiles = false;
+            if (e.dataTransfer.items) {
+                for (let item of e.dataTransfer.items) {
+                    if (item.kind === 'file') {
+                        const file = item.getAsFile();
+                        if (file && isValidModelFile(file)) {
+                            hasModelFiles = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (hasModelFiles) {
+                overlayText.innerHTML = '🎯 Drop 3D Model Here<br><small style="font-size: 16px;">GLB or GLTF detected!</small>';
+                dragOverlay.style.borderColor = '#28a745';
+                dragOverlay.style.background = 'rgba(40, 167, 69, 0.1)';
+                overlayText.style.color = '#28a745';
+            } else {
+                overlayText.innerHTML = '🎯 Drop 3D Model Here<br><small style="font-size: 16px;">GLB or GLTF files only</small>';
+                dragOverlay.style.borderColor = '#007bff';
+                dragOverlay.style.background = 'rgba(0, 123, 255, 0.1)';
+                overlayText.style.color = '#007bff';
+            }
+            
+            dragOverlay.style.display = 'block';
+        }
+    });
+    
+    // Drag over
+    document.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+    
+    // Drag leave
+    document.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dragCounter--;
+        
+        if (dragCounter === 0) {
+            dragOverlay.style.display = 'none';
+        }
+    });
+    
+    // Drop
+    document.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dragCounter = 0;
+        dragOverlay.style.display = 'none';
+        
+        const files = Array.from(e.dataTransfer.files);
+        
+        if (files.length === 0) return;
+        
+        // Find the first valid model file
+        const modelFile = files.find(file => isValidModelFile(file));
+        
+        if (modelFile) {
+            console.log(`Loading model via drag & drop: ${modelFile.name}`);
+            loadGLB(modelFile);
+            
+            // Show success feedback
+            showDropFeedback(`✅ Loading ${modelFile.name}`, 'success');
+        } else {
+            // Show error feedback
+            showDropFeedback('❌ Please drop a GLB or GLTF file', 'error');
+        }
+    });
+    
+    // Prevent default drag behavior on canvas to avoid conflicts
+    renderer.domElement.addEventListener('dragover', function(e) {
+        e.preventDefault();
+    });
+    
+    renderer.domElement.addEventListener('drop', function(e) {
+        e.preventDefault();
+    });
+}
+
+function showDropFeedback(message, type) {
+    // Create temporary feedback message
+    const feedback = document.createElement('div');
+    feedback.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-weight: bold;
+        z-index: 10001;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        transition: opacity 0.3s ease;
+        ${type === 'success' 
+            ? 'background: #d4edda; color: #155724; border: 1px solid #c3e6cb;'
+            : 'background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;'
+        }
+    `;
+    feedback.textContent = message;
+    document.body.appendChild(feedback);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        feedback.style.opacity = '0';
+        setTimeout(() => {
+            if (feedback.parentNode) {
+                feedback.parentNode.removeChild(feedback);
+            }
+        }, 300);
+    }, 3000);
+}
+
+function addInitialHelpText() {
+    const helpText = document.createElement('div');
+    helpText.id = 'initial-help-text';
+    helpText.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: #666;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 18px;
+        z-index: 100;
+        pointer-events: none;
+        user-select: none;
+    `;
+    helpText.innerHTML = `
+        <div style="font-size: 48px; margin-bottom: 16px;">🎯</div>
+        <div style="font-weight: bold; margin-bottom: 8px;">Drag & Drop a 3D Model</div>
+        <div style="font-size: 14px; color: #888;">
+            GLB or GLTF files<br>
+            Or use the 📂 button in the toolbar
+        </div>
+    `;
+    document.body.appendChild(helpText);
+}
+
+function removeInitialHelpText() {
+    const helpText = document.getElementById('initial-help-text');
+    if (helpText) {
+        helpText.style.opacity = '0';
+        helpText.style.transition = 'opacity 0.5s ease';
+        setTimeout(() => {
+            if (helpText.parentNode) {
+                helpText.parentNode.removeChild(helpText);
+            }
+        }, 500);
+    }
+}
+
+function exportStandaloneWebsite() {
+    // Show device target selection dialog
+    const deviceTarget = prompt(
+        '📱 Choose device target for exported website:\n\n' +
+        '1 = PC/Desktop (mouse controls, wider layout)\n' +
+        '2 = Mobile/Phone (touch controls, mobile layout)\n' +
+        '3 = Universal (adaptive for both)\n\n' +
+        'Enter 1, 2, or 3:',
+        '3'
+    );
+    
+    if (deviceTarget === null) return; // User cancelled
+    
+    let targetDevice = 'universal';
+    if (deviceTarget === '1') targetDevice = 'desktop';
+    else if (deviceTarget === '2') targetDevice = 'mobile';
+    else if (deviceTarget === '3') targetDevice = 'universal';
+    else {
+        alert('Invalid selection. Using Universal mode.');
+        targetDevice = 'universal';
+    }
+    
+    // Collect all scene data
+    const sceneData = {
+        camera: {
+            fov: camera.fov,
+            near: camera.near,
+            far: camera.far,
+            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+            target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+            quaternion: { x: camera.quaternion.x, y: camera.quaternion.y, z: camera.quaternion.z, w: camera.quaternion.w }
+        },
+        keyframes: (window.cameraKeyframes || []).map((kf, i) => ({
+            index: i+1,
+            position: { x: kf.position.x, y: kf.position.y, z: kf.position.z },
+            target: { x: kf.target.x, y: kf.target.y, z: kf.target.z },
+            zoom: kf.zoom,
+            fov: kf.fov,
+            near: kf.near,
+            far: kf.far,
+            quaternion: { x: kf.quaternion.x, y: kf.quaternion.y, z: kf.quaternion.z, w: kf.quaternion.w },
+            duration: kf.duration || ANIMATION_SPEED,
+            modelAnimTime: kf.modelAnimTime || 0
+        })),
+        lighting: (() => {
+            let hemi = null, dir = null;
+            scene.traverse(obj => {
+                if (obj.isHemisphereLight) hemi = obj;
+                if (obj.isDirectionalLight) dir = obj;
+            });
+            return {
+                hemisphere: hemi ? { intensity: hemi.intensity, color: hemi.color.getHex(), groundColor: hemi.groundColor.getHex() } : null,
+                directional: dir ? { intensity: dir.intensity, color: dir.color.getHex() } : null
+            };
+        })(),
+        background: scene.background ? scene.background.getHex() : 0xf0f0f0,
+        settings: {
+            animationSpeed: ANIMATION_SPEED,
+            autoPlayCamera: false,
+            autoPlayModel: false
+        },
+        deviceTarget: targetDevice
+    };
+
+    // Create ZIP package with all files
+    createZipPackage(sceneData);
+}
+
+async function createZipPackage(sceneData) {
+    // Import JSZip dynamically
+    if (!window.JSZip) {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        document.head.appendChild(script);
+        
+        await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = reject;
+        });
+    }
+
+    const zip = new JSZip();
+    
+    // Add the main website files
+    zip.file('index.html', generateViewerHTML());
+    zip.file('viewer.js', generateViewerJS(sceneData));
+    zip.file('README.txt', generateReadme());
+    
+    // Add the batch file for local hosting
+    const batchContent = `@echo off
+echo Starting local web server...
+
+:: Check if Python is installed
+python --version >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Using Python HTTP server...
+    cd /d "%~dp0"
+    start "" cmd /c "python -m http.server 8000"
+    timeout /t 2 /nobreak > nul
+    start http://localhost:8000
+    goto :eof
+)
+
+:: Check if Python3 is installed
+python3 --version >nul 2>&1
+if %errorlevel% equ 0 (
+    echo Using Python3 HTTP server...
+    cd /d "%~dp0"
+    start "" cmd /c "python3 -m http.server 8000"
+    timeout /t 2 /nobreak > nul
+    start http://localhost:8000
+    goto :eof
+)
+
+echo Error: Python is not installed.
+echo Please install Python from https://www.python.org/downloads/
+pause`;
+    
+    zip.file('starthost.bat', batchContent);
+    
+    // Try to include the current model if available
+    if (window.currentModelFile && window.currentModelFileName) {
+        try {
+            // Use the stored model file data
+            zip.file(window.currentModelFileName, window.currentModelFile);
+            console.log('Added current model to ZIP:', window.currentModelFileName);
+        } catch (error) {
+            console.warn('Could not add model file to ZIP:', error);
+        }
+    }
+    
+    // Generate and download the ZIP
+    try {
+        const content = await zip.generateAsync({type: 'blob'});
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '3d-viewer-website.zip';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+        // Show success message
+        const modelInfo = window.currentModelFileName ? 
+            '\n✅ Current model included: ' + window.currentModelFileName : 
+            '\n⚠️  No model loaded - you can add one later';
+            
+        const deviceInfo = sceneData.deviceTarget === 'desktop' ? '🖥️ Desktop optimized' :
+                          sceneData.deviceTarget === 'mobile' ? '📱 Mobile optimized' :
+                          '🔄 Universal (adaptive)';
+            
+        alert('🎉 Website ZIP package created!\n\n' +
+              'Target: ' + deviceInfo + '\n\n' +
+              'Files included:\n' +
+              '• index.html (viewer page)\n' +
+              '• viewer.js (scene data)\n' +
+              '• README.txt (instructions)\n' +
+              '• starthost.bat (local server)\n' +
+              modelInfo + '\n\n' +
+              '💡 Double-click starthost.bat to run locally!');
+              
+    } catch (error) {
+        console.error('Error creating ZIP:', error);
+        alert('Error creating ZIP file. Please try again.');
+    }
+}
+
+function generateViewerHTML() {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #222; 
+            color: white; 
+            overflow: hidden; 
+            height: 100vh;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1000;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        
+        #dropZone {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+            padding: 40px;
+            border: 3px dashed #666;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.8);
+        }
+        
+        #dropZone.hidden { display: none; }
+        
+        .drag-over {
+            border-color: #007bff !important;
+            background: rgba(0,123,255,0.2) !important;
+        }
+        
+        #deviceInfo {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <h2>Loading 3D Viewer...</h2>
+        <p>Please wait...</p>
+    </div>
+    
+    <div id="dropZone">
+        <h2>🎯 Drop Your 3D Model Here</h2>
+        <p>GLB or GLTF files</p>
+        <p style="margin-top: 10px; font-size: 12px; color: #ccc;">
+            Or place your model file in this folder as "model.glb" and refresh
+        </p>
+    </div>
+    
+    <div id="deviceInfo"></div>
+    
+    <div id="controls" style="display: none;">
+        <button id="playCamera">📹 Play Camera</button>
+        <button id="playBoth">🎬 Play Camera + Model</button>
+        <button id="stop">⏹ Stop</button>
+        <button id="reset">🔄 Reset View</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="viewer.js"></script>
+</body>
+</html>`;
+}
+
+function generateViewerJS(sceneData) {
+    const modelFileName = window.currentModelFileName || 'model.glb';
+    return `// 3D Model Viewer - Generated from Scene Export
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// Scene Data (exported from your scene)
+const SCENE_DATA = ${JSON.stringify(sceneData, null, 2)};
+
+// Model file to load automatically
+const MODEL_FILE = '${modelFileName}';
+
+// Global variables
+let scene, camera, renderer, controls, model;
+let mixer = null;
+let clock = new THREE.Clock();
+let gltfClips = [];
+let animationActions = new Map();
+let animating = false;
+let animFrame = null;
+
+// Initialize the viewer
+function init() {
+    // Device optimization based on target
+    const deviceTarget = SCENE_DATA.deviceTarget || 'universal';
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // Show device info
+    document.getElementById('deviceInfo').textContent = 
+        \`Optimized for: \${deviceTarget === 'desktop' ? '🖥️ Desktop' : 
+        deviceTarget === 'mobile' ? '📱 Mobile' : '🔄 Universal'}\`;
+    
+    // Scene setup
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(SCENE_DATA.background);
+
+    // Camera setup with device-specific optimizations
+    camera = new THREE.PerspectiveCamera(
+        SCENE_DATA.camera.fov,
+        window.innerWidth / window.innerHeight,
+        SCENE_DATA.camera.near,
+        SCENE_DATA.camera.far
+    );
+    camera.position.set(
+        SCENE_DATA.camera.position.x,
+        SCENE_DATA.camera.position.y,
+        SCENE_DATA.camera.position.z
+    );
+    camera.quaternion.set(
+        SCENE_DATA.camera.quaternion.x,
+        SCENE_DATA.camera.quaternion.y,
+        SCENE_DATA.camera.quaternion.z,
+        SCENE_DATA.camera.quaternion.w
+    );
+
+    // Renderer setup with device-specific settings
+    const rendererOptions = { antialias: true };
+    
+    // Adjust quality based on device target
+    let pixelRatio = window.devicePixelRatio;
+    if (deviceTarget === 'mobile' || (deviceTarget === 'universal' && isMobile)) {
+        pixelRatio = Math.min(pixelRatio, 2); // Limit for mobile performance
+    } else if (deviceTarget === 'desktop') {
+        pixelRatio = Math.min(pixelRatio, 3); // Higher quality for desktop
+    }
+    
+    renderer = new THREE.WebGLRenderer(rendererOptions);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(pixelRatio);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.physicallyCorrectLights = true;
+    document.body.appendChild(renderer.domElement);
+
+    // Environment
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envTex = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+    scene.environment = envTex;
+
+    // Lighting
+    if (SCENE_DATA.lighting.hemisphere) {
+        const hemiLight = new THREE.HemisphereLight(
+            SCENE_DATA.lighting.hemisphere.color,
+            SCENE_DATA.lighting.hemisphere.groundColor,
+            SCENE_DATA.lighting.hemisphere.intensity
+        );
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+    }
+
+    if (SCENE_DATA.lighting.directional) {
+        const dirLight = new THREE.DirectionalLight(
+            SCENE_DATA.lighting.directional.color,
+            SCENE_DATA.lighting.directional.intensity
+        );
+        dirLight.position.set(3, 10, 10);
+        scene.add(dirLight);
+    }
+
+    // Controls with device-specific settings
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(
+        SCENE_DATA.camera.target.x,
+        SCENE_DATA.camera.target.y,
+        SCENE_DATA.camera.target.z
+    );
+    
+    // Device-specific control optimizations (reuse deviceTarget from above)
+    if (deviceTarget === 'mobile' || (deviceTarget === 'universal' && isMobile)) {
+        // Mobile optimizations
+        controls.enablePan = true; // Touch panning
+        controls.enableZoom = true; // Pinch zoom
+        controls.enableRotate = true; // Touch rotation
+        controls.rotateSpeed = 0.8; // Slightly slower for touch
+        controls.zoomSpeed = 1.2; // Faster zoom for touch
+        controls.panSpeed = 1.0;
+        controls.autoRotate = false;
+        controls.autoRotateSpeed = 2.0;
+        
+        // Mobile-specific limits
+        controls.minDistance = 0.5;
+        controls.maxDistance = 50;
+        controls.maxPolarAngle = Math.PI; // Allow full rotation
+        
+    } else if (deviceTarget === 'desktop') {
+        // Desktop optimizations
+        controls.enablePan = true; // Right-click panning
+        controls.enableZoom = true; // Mouse wheel zoom
+        controls.enableRotate = true; // Mouse rotation
+        controls.rotateSpeed = 1.0; // Standard speed
+        controls.zoomSpeed = 1.0;
+        controls.panSpeed = 1.0;
+        controls.autoRotate = false;
+        
+        // Desktop-specific limits
+        controls.minDistance = 0.1;
+        controls.maxDistance = 100;
+        controls.maxPolarAngle = Math.PI;
+        
+    } else {
+        // Universal - adaptive settings
+        controls.enablePan = true;
+        controls.enableZoom = true;
+        controls.enableRotate = true;
+        controls.rotateSpeed = isMobile ? 0.8 : 1.0;
+        controls.zoomSpeed = isMobile ? 1.2 : 1.0;
+        controls.panSpeed = 1.0;
+        controls.autoRotate = false;
+        
+        controls.minDistance = isMobile ? 0.5 : 0.1;
+        controls.maxDistance = isMobile ? 50 : 100;
+        controls.maxPolarAngle = Math.PI;
+    }
+    
+    controls.update();
+
+    // Setup drag and drop (as fallback)
+    setupDragAndDrop();
+    
+    // Setup controls
+    setupControls();
+
+    // Try to load the included model first
+    tryLoadIncludedModel();
+
+    // Start animation loop
+    animate();
+}
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    if (controls) controls.update();
+    if (mixer) mixer.update(clock.getDelta());
+    renderer.render(scene, camera);
+}
+
+// Try to load the model that was included with the export
+async function tryLoadIncludedModel() {
+    try {
+        const response = await fetch(MODEL_FILE);
+        if (response.ok) {
+            const blob = await response.blob();
+            const file = new File([blob], MODEL_FILE);
+            loadModelFromFile(file);
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dropZone').classList.add('hidden');
+            document.getElementById('controls').style.display = 'flex';
+            return;
+        }
+    } catch (e) {
+        console.log('Included model not found, showing drop zone');
+    }
+    
+    // If included model fails, show drop zone and hide loading
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dropZone').classList.remove('hidden');
+}
+
+// Load 3D model from file
+function loadModelFromFile(file) {
+    if (model) {
+        scene.remove(model);
+        if (mixer) mixer.stopAllActions();
+    }
+
+    const loader = new GLTFLoader();
+    
+    // Setup additional loaders
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+    loader.setDRACOLoader(dracoLoader);
+
+    const ktx2Loader = new KTX2Loader();
+    ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+    ktx2Loader.detectSupport(renderer);
+    loader.setKTX2Loader(ktx2Loader);
+
+    loader.setMeshoptDecoder(MeshoptDecoder);
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        loader.parse(e.target.result, '', function(gltf) {
+            model = gltf.scene;
+            
+            // Setup animations
+            if (gltf.animations && gltf.animations.length) {
+                gltfClips = gltf.animations;
+                mixer = new THREE.AnimationMixer(model);
+                gltfClips.forEach((clip, i) => {
+                    const action = mixer.clipAction(clip);
+                    action.clampWhenFinished = true;
+                    action.setLoop(THREE.LoopRepeat, Infinity);
+                    action.enabled = true;
+                    animationActions.set(i, action);
+                });
+            }
+
+            // Center model
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            model.position.sub(center);
+            scene.add(model);
+
+            // Fit camera if no keyframes
+            if (SCENE_DATA.keyframes.length === 0) {
+                fitCameraToModel();
+            }
+
+            // Hide drop zone and show controls
+            document.getElementById('dropZone').classList.add('hidden');
+            document.getElementById('controls').style.display = 'flex';
+            
+        }, function(error) {
+            console.error('Error loading model:', error);
+            alert('Error loading 3D model. Please check the file format.');
+        });
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// Camera animation functions
+function playCamera() {
+    if (SCENE_DATA.keyframes.length < 2) {
+        alert('No camera animation available');
+        return;
+    }
+    animateKeyframes(SCENE_DATA.keyframes);
+}
+
+function playBoth() {
+    if (SCENE_DATA.keyframes.length < 2) {
+        alert('No camera animation available');
+        return;
+    }
+    
+    // Start camera animation
+    animateKeyframes(SCENE_DATA.keyframes);
+    
+    // Start model animations
+    if (mixer && gltfClips.length > 0) {
+        gltfClips.forEach((_, i) => {
+            const action = animationActions.get(i);
+            if (action) {
+                action.reset();
+                action.paused = false;
+                action.play();
+            }
+        });
+    }
+}
+
+function stopAnimations() {
+    if (animFrame) {
+        cancelAnimationFrame(animFrame);
+        animFrame = null;
+    }
+    animating = false;
+    
+    if (animationActions.size > 0) {
+        animationActions.forEach(action => action.stop());
+    }
+}
+
+function resetView() {
+    camera.position.set(
+        SCENE_DATA.camera.position.x,
+        SCENE_DATA.camera.position.y,
+        SCENE_DATA.camera.position.z
+    );
+    controls.target.set(
+        SCENE_DATA.camera.target.x,
+        SCENE_DATA.camera.target.y,
+        SCENE_DATA.camera.target.z
+    );
+    controls.update();
+    stopAnimations();
+}
+
+// Animation helper functions
+function lerpVec3(a, b, t) {
+    return new THREE.Vector3(
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t,
+        a.z + (b.z - a.z) * t
+    );
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+function slerpQuat(a, b, t) {
+    return a.clone().slerp(b, t);
+}
+
+function animateKeyframes(keyframes) {
+    if (animating || keyframes.length < 2) return;
+    animating = true;
+    let i = 0;
+    
+    function animateToNext() {
+        if (i >= keyframes.length - 1) {
+            animating = false;
+            return;
+        }
+        
+        const start = keyframes[i];
+        const end = keyframes[i + 1];
+        const duration = end.duration || 1200;
+        const startTime = performance.now();
+        
+        function step(now) {
+            let t = Math.min((now - startTime) / duration, 1);
+            
+            // Interpolate camera properties
+            const newTarget = lerpVec3(
+                new THREE.Vector3(start.target.x, start.target.y, start.target.z),
+                new THREE.Vector3(end.target.x, end.target.y, end.target.z),
+                t
+            );
+            const newZoom = lerp(start.zoom, end.zoom, t);
+            const newFov = lerp(start.fov, end.fov, t);
+            const newNear = lerp(start.near, end.near, t);
+            const newFar = lerp(start.far, end.far, t);
+            
+            controls.target.copy(newTarget);
+            
+            // Spherical interpolation for camera position
+            const startOffset = new THREE.Vector3(start.position.x, start.position.y, start.position.z).sub(newTarget);
+            const endOffset = new THREE.Vector3(end.position.x, end.position.y, end.position.z).sub(newTarget);
+            const startSph = new THREE.Spherical().setFromVector3(startOffset);
+            const endSph = new THREE.Spherical().setFromVector3(endOffset);
+            const theta = lerp(startSph.theta, endSph.theta, t);
+            const phi = lerp(startSph.phi, endSph.phi, t);
+            const sph = new THREE.Spherical(newZoom, phi, theta);
+            const newOffset = new THREE.Vector3().setFromSpherical(sph);
+            camera.position.copy(newTarget.clone().add(newOffset));
+            
+            // Interpolate camera rotation
+            const startQuat = new THREE.Quaternion(start.quaternion.x, start.quaternion.y, start.quaternion.z, start.quaternion.w);
+            const endQuat = new THREE.Quaternion(end.quaternion.x, end.quaternion.y, end.quaternion.z, end.quaternion.w);
+            const newQuat = slerpQuat(startQuat, endQuat, t);
+            camera.quaternion.copy(newQuat);
+            
+            // Update camera properties
+            camera.fov = newFov;
+            camera.near = newNear;
+            camera.far = newFar;
+            camera.updateProjectionMatrix();
+            controls.update();
+            
+            if (t < 1) {
+                animFrame = requestAnimationFrame(step);
+            } else {
+                i++;
+                animateToNext();
+            }
+        }
+        animFrame = requestAnimationFrame(step);
+    }
+    animateToNext();
+}
+
+// Fit camera to model
+function fitCameraToModel() {
+    if (!model) return;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = camera.fov * (Math.PI / 180);
+    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+    cameraZ *= 2.2;
+    camera.position.set(0, 0, cameraZ);
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.minDistance = Math.max(0.01, maxDim * 0.2);
+    controls.maxDistance = cameraZ * 50;
+    controls.update();
+    camera.far = cameraZ * 200;
+    camera.updateProjectionMatrix();
+}
+
+// Setup drag and drop (fallback if no model included)
+function setupDragAndDrop() {
+    const dropZone = document.getElementById('dropZone');
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+    });
+    
+    dropZone.addEventListener('drop', handleDrop, false);
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    function highlight(e) {
+        dropZone.classList.add('drag-over');
+    }
+    
+    function unhighlight(e) {
+        dropZone.classList.remove('drag-over');
+    }
+    
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        if (files.length > 0) {
+            const file = files[0];
+            if (file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf')) {
+                loadModelFromFile(file);
+            } else {
+                alert('Please drop a GLB or GLTF file');
+            }
+        }
+    }
+}
+
+// Setup control buttons
+function setupControls() {
+    document.getElementById('playCamera').addEventListener('click', playCamera);
+    document.getElementById('playBoth').addEventListener('click', playBoth);
+    document.getElementById('stop').addEventListener('click', stopAnimations);
+    document.getElementById('reset').addEventListener('click', resetView);
+}
+
+// Handle window resize
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+window.addEventListener('resize', onWindowResize, false);
+
+// Initialize when page loads
+init();`;
+}
+
+function generateReadme() {
+    return `3D Model Viewer - Standalone Website Package
+=============================================
+
+This ZIP contains your exported 3D scene as a standalone website!
+
+QUICK START (Windows):
+1. Double-click "starthost.bat" to start local server
+2. Your browser will open automatically
+3. Done! Your 3D scene is ready to view
+
+MANUAL SETUP:
+1. Extract all files to a folder
+2. If no model included, add your GLB/GLTF file
+3. Open index.html in a web browser
+
+ALTERNATIVE METHOD:
+- Open index.html directly
+- Drag and drop model files onto the viewer
+
+FILES INCLUDED:
+📄 index.html - Main viewer page
+⚙️  viewer.js - Scene data & viewer code
+📋 README.txt - This file
+🖥️  starthost.bat - Local server launcher (Windows)
+🎯 [model file] - Your 3D model (if loaded)
+
+FEATURES INCLUDED:
+✅ Your camera animation keyframes
+✅ Your scene lighting settings  
+✅ Your background color
+✅ Model animation support
+✅ Drag & drop model loading
+✅ Clean viewer interface
+
+CONTROLS:
+📹 Play Camera - Plays your camera animation only
+🎬 Play Camera + Model - Plays both camera and model animations
+⏹ Stop - Stops all animations
+🔄 Reset View - Returns to original camera position
+
+HOSTING ONLINE:
+To put this on the web:
+1. Upload all files to a web server
+2. Make sure your model file is included
+3. Share the URL!
+
+TECHNICAL NOTES:
+- Uses CDN for Three.js (internet required)
+- Works on desktop and mobile browsers
+- Optimized for performance
+- No server backend needed
+- CORS-friendly for local development
+
+TROUBLESHOOTING:
+- If starthost.bat doesn't work, install Python from python.org
+- For CORS issues, use the batch file or a local server
+- Drag & drop works if you need to change models
+
+Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
+Your creative work preserved forever! 🎨
+`;
+}
+
+let phonePreviewActive = false;
+
+function togglePhonePreview() {
+    phonePreviewActive = !phonePreviewActive;
+    
+    if (phonePreviewActive) {
+        createPhonePreviewBorder();
+    } else {
+        removePhonePreviewBorder();
+    }
+}
+
+function createPhonePreviewBorder() {
+    // Remove existing border if any
+    removePhonePreviewBorder();
+    
+    // Create phone preview overlay
+    const phoneOverlay = document.createElement('div');
+    phoneOverlay.id = 'phone-preview-overlay';
+    phoneOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 9999;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    `;
+    
+    // Create phone frame
+    const phoneFrame = document.createElement('div');
+    phoneFrame.id = 'phone-frame';
+    
+    // Calculate phone dimensions (iPhone 14 Pro proportions)
+    const phoneAspectRatio = 19.5 / 9; // iPhone 14 Pro ratio
+    const maxPhoneHeight = window.innerHeight * 0.85;
+    const maxPhoneWidth = window.innerWidth * 0.4;
+    
+    let phoneHeight = maxPhoneHeight;
+    let phoneWidth = phoneHeight / phoneAspectRatio;
+    
+    if (phoneWidth > maxPhoneWidth) {
+        phoneWidth = maxPhoneWidth;
+        phoneHeight = phoneWidth * phoneAspectRatio;
+    }
+    
+    phoneFrame.style.cssText = `
+        width: ${phoneWidth}px;
+        height: ${phoneHeight}px;
+        border: 8px solid #2c2c2c;
+        border-radius: 35px;
+        background: transparent;
+        position: relative;
+        box-shadow: 
+            0 0 0 2px #1a1a1a,
+            0 0 20px rgba(0,0,0,0.3),
+            inset 0 0 0 2px #404040;
+    `;
+    
+    // Add phone details (camera notch, home indicator, etc.)
+    const notch = document.createElement('div');
+    notch.style.cssText = `
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 120px;
+        height: 28px;
+        background: #2c2c2c;
+        border-radius: 0 0 15px 15px;
+        z-index: 10001;
+    `;
+    
+    const homeIndicator = document.createElement('div');
+    homeIndicator.style.cssText = `
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 140px;
+        height: 4px;
+        background: #666;
+        border-radius: 2px;
+        z-index: 10001;
+    `;
+    
+    phoneFrame.appendChild(notch);
+    phoneFrame.appendChild(homeIndicator);
+    phoneOverlay.appendChild(phoneFrame);
+    
+    // Add phone preview info
+    const infoPanel = document.createElement('div');
+    infoPanel.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        text-align: center;
+        pointer-events: auto;
+        z-index: 10002;
+    `;
+    infoPanel.innerHTML = `
+        📱 <strong>Phone Preview Mode</strong><br>
+        Resolution: ${Math.round(phoneWidth-16)}×${Math.round(phoneHeight-16)}<br>
+        <button onclick="togglePhonePreview()" style="margin-top: 8px; padding: 5px 10px; border: none; border-radius: 5px; background: #007bff; color: white; cursor: pointer;">Exit Preview</button>
+    `;
+    
+    phoneOverlay.appendChild(infoPanel);
+    document.body.appendChild(phoneOverlay);
+    
+    // Adjust renderer size to fit phone frame
+    const phoneInnerWidth = phoneWidth - 16; // Account for border
+    const phoneInnerHeight = phoneHeight - 16;
+    
+    // Store original size for restoration
+    window.originalRendererSize = {
+        width: renderer.domElement.width,
+        height: renderer.domElement.height
+    };
+    
+    // Position the canvas inside the phone frame
+    renderer.domElement.style.position = 'fixed';
+    renderer.domElement.style.top = '50%';
+    renderer.domElement.style.left = '50%';
+    renderer.domElement.style.transform = 'translate(-50%, -50%)';
+    renderer.domElement.style.width = phoneInnerWidth + 'px';
+    renderer.domElement.style.height = phoneInnerHeight + 'px';
+    renderer.domElement.style.zIndex = '10000';
+    renderer.domElement.style.borderRadius = '27px'; // Match phone frame radius
+    
+    // Update renderer size
+    renderer.setSize(phoneInnerWidth, phoneInnerHeight);
+    camera.aspect = phoneInnerWidth / phoneInnerHeight;
+    camera.updateProjectionMatrix();
+    
+    console.log('📱 Phone preview activated:', phoneInnerWidth + 'x' + phoneInnerHeight);
+}
+
+function removePhonePreviewBorder() {
+    const overlay = document.getElementById('phone-preview-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+    
+    // Restore original renderer settings
+    if (window.originalRendererSize) {
+        renderer.domElement.style.position = '';
+        renderer.domElement.style.top = '';
+        renderer.domElement.style.left = '';
+        renderer.domElement.style.transform = '';
+        renderer.domElement.style.width = '';
+        renderer.domElement.style.height = '';
+        renderer.domElement.style.zIndex = '';
+        renderer.domElement.style.borderRadius = '';
+        
+        // Restore full size
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        
+        delete window.originalRendererSize;
+        console.log('📱 Phone preview deactivated');
+    }
+}
+
 function loadGLB(file) {
+    // Store file data for export
+    window.currentModelFile = file;
+    window.currentModelFileName = file.name;
+    
+    // Remove initial help text when loading starts
+    removeInitialHelpText();
+    
     if (model) {
         scene.remove(model);
         model.traverse(child => {
