@@ -1,3 +1,251 @@
+// PWA Installation and Service Worker Registration
+let deferredPrompt;
+let isAppInstalled = false;
+
+// Check if app is already installed
+window.addEventListener('beforeinstallprompt', (e) => {
+    console.log('💡 PWA installation available');
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstallButton();
+});
+
+// Handle successful installation
+window.addEventListener('appinstalled', () => {
+    console.log('✅ PWA installed successfully');
+    isAppInstalled = true;
+    hideInstallButton();
+    showNotification('🎉 3D Viewer installed! You can now use it offline.');
+});
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then((registration) => {
+                console.log('✅ Service Worker registered:', registration.scope);
+                
+                // Check for updates
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            showUpdateNotification();
+                        }
+                    });
+                });
+            })
+            .catch((error) => {
+                console.error('❌ Service Worker registration failed:', error);
+            });
+    });
+}
+
+function showInstallButton() {
+    // Add install button to toolbar if not already present
+    const existingBtn = document.getElementById('pwa-install-btn');
+    if (existingBtn || isAppInstalled) return;
+    
+    // Wait for toolbars to be created
+    setTimeout(() => {
+        // Desktop install button
+        const desktopBar = document.getElementById('desktop-toolbar');
+        if (desktopBar && !document.getElementById('pwa-install-btn-desktop')) {
+            const installBtn = document.createElement('button');
+            installBtn.id = 'pwa-install-btn-desktop';
+            installBtn.textContent = '⬇️';
+            installBtn.title = 'Install as Progressive Web App';
+            installBtn.onclick = installPWA;
+            installBtn.style.cssText = `
+                background: #ffffff;
+                color: #000000;
+                border: 1px solid #aaaaaa;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: normal;
+                margin-left: 8px;
+                transition: all 0.1s ease;
+                font-family: system-ui, -apple-system, sans-serif;
+            `;
+            
+            // Add hover effect to match other buttons
+            installBtn.addEventListener('mouseenter', () => {
+                installBtn.style.background = '#f0f0f0';
+                installBtn.style.borderColor = '#999999';
+            });
+            
+            installBtn.addEventListener('mouseleave', () => {
+                installBtn.style.background = '#ffffff';
+                installBtn.style.borderColor = '#aaaaaa';
+            });
+            
+            desktopBar.appendChild(installBtn);
+        }
+        
+        // Mobile install button
+        const mobileBar = document.getElementById('mobile-toolbar');
+        if (mobileBar && !document.getElementById('pwa-install-btn-mobile')) {
+            const installBtnMobile = document.createElement('button');
+            installBtnMobile.id = 'pwa-install-btn-mobile';
+            installBtnMobile.textContent = '⬇️';
+            installBtnMobile.title = 'Install App';
+            installBtnMobile.onclick = installPWA;
+            installBtnMobile.style.cssText = `
+                padding: 0;
+                font-size: 22px;
+                width: 44px;
+                height: 44px;
+                border: 1px solid #aaaaaa;
+                border-radius: 10px;
+                background: #ffffff;
+                color: #000000;
+                white-space: nowrap;
+                cursor: pointer;
+                transition: all 0.1s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            `;
+            
+            // Add touch/hover effects for mobile to match theme
+            installBtnMobile.addEventListener('touchstart', () => {
+                installBtnMobile.style.background = '#f0f0f0';
+            });
+            
+            installBtnMobile.addEventListener('touchend', () => {
+                setTimeout(() => {
+                    installBtnMobile.style.background = '#ffffff';
+                }, 100);
+            });
+            
+            installBtnMobile.addEventListener('mouseenter', () => {
+                installBtnMobile.style.background = '#f0f0f0';
+            });
+            
+            installBtnMobile.addEventListener('mouseleave', () => {
+                installBtnMobile.style.background = '#ffffff';
+            });
+            
+            mobileBar.appendChild(installBtnMobile);
+        }
+    }, 1000);
+}
+
+function hideInstallButton() {
+    const installBtnDesktop = document.getElementById('pwa-install-btn-desktop');
+    const installBtnMobile = document.getElementById('pwa-install-btn-mobile');
+    if (installBtnDesktop) installBtnDesktop.remove();
+    if (installBtnMobile) installBtnMobile.remove();
+}
+
+async function installPWA() {
+    if (!deferredPrompt) {
+        showNotification('⚠️ Installation not available on this device');
+        return;
+    }
+    
+    try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            console.log('✅ User accepted PWA installation');
+            showNotification('🎉 Installing 3D Viewer...');
+        } else {
+            console.log('❌ User dismissed PWA installation');
+        }
+        
+        deferredPrompt = null;
+        hideInstallButton();
+    } catch (error) {
+        console.error('❌ PWA installation error:', error);
+        showNotification('❌ Installation failed. Try again later.');
+    }
+}
+
+function showUpdateNotification() {
+    const updateDiv = document.createElement('div');
+    updateDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #007bff;
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        z-index: 10000;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+    updateDiv.innerHTML = `
+        <div style="margin-bottom: 10px;">🔄 App update available!</div>
+        <button onclick="updateApp()" style="background: white; color: #007bff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 5px;">Update</button>
+        <button onclick="this.parentElement.remove()" style="background: transparent; color: white; border: 1px solid white; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Later</button>
+    `;
+    document.body.appendChild(updateDiv);
+    
+    setTimeout(() => {
+        if (updateDiv.parentElement) {
+            updateDiv.remove();
+        }
+    }, 10000);
+}
+
+function updateApp() {
+    if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+    }
+    window.location.reload();
+}
+
+function showNotification(message, duration = 3000) {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        z-index: 10000;
+        font-size: 14px;
+        max-width: 90%;
+        text-align: center;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, duration);
+}
+
+// Check if running as PWA
+function isPWA() {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+           window.navigator.standalone === true;
+}
+
+// PWA-specific optimizations
+if (isPWA()) {
+    console.log('🚀 Running as PWA');
+    document.body.classList.add('pwa-mode');
+    
+    // Hide browser-specific elements when running as PWA
+    const style = document.createElement('style');
+    style.textContent = `
+        .pwa-mode #upload-label { display: none !important; }
+        .pwa-mode body { padding-top: env(safe-area-inset-top); }
+    `;
+    document.head.appendChild(style);
+}
+
 // --- Scene Settings Save/Load Menu UI ---
 function applyResponsiveMenu(menu) {
     const isMobile = (window.__isMobile !== undefined) ? window.__isMobile : matchMedia('(pointer: coarse), (max-width: 768px)').matches;
@@ -2425,6 +2673,27 @@ async function createZipPackage(sceneData) {
     zip.file('index.html', generateViewerHTML());
     zip.file('viewer.js', generateViewerJS(sceneData));
     zip.file('README.txt', generateReadme());
+    zip.file('manifest.json', generateManifest());
+    zip.file('sw.js', generateServiceWorker());
+    
+    // Add icon files if they exist
+    try {
+        const iconFiles = ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.ico'];
+        for (const iconFile of iconFiles) {
+            try {
+                const response = await fetch('./' + iconFile);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    zip.file(iconFile, blob);
+                    console.log('Added icon to ZIP:', iconFile);
+                }
+            } catch (err) {
+                console.warn('Icon file not found:', iconFile);
+            }
+        }
+    } catch (error) {
+        console.warn('Could not add icon files to ZIP:', error);
+    }
     
     // Add the batch file for local hosting
     const batchContent = `@echo off
@@ -2514,7 +2783,23 @@ function generateViewerHTML() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Model Viewer</title>
+    <title>3D Model Viewer - Exported Scene</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Exported 3D scene with camera animations and model viewer">
+    <meta name="theme-color" content="#007bff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="3D Scene">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="./manifest.json">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="./favicon.ico" sizes="32x32">
+    <link rel="icon" type="image/png" href="./icon-192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -2523,6 +2808,7 @@ function generateViewerHTML() {
             color: white; 
             overflow: hidden; 
             height: 100vh;
+            padding-top: env(safe-area-inset-top);
         }
         canvas { display: block; width: 100%; height: 100%; }
         
@@ -2537,7 +2823,7 @@ function generateViewerHTML() {
         
         #controls {
             position: absolute;
-            bottom: 20px;
+            bottom: calc(20px + env(safe-area-inset-bottom));
             left: 50%;
             transform: translateX(-50%);
             display: flex;
@@ -2583,13 +2869,27 @@ function generateViewerHTML() {
         
         #deviceInfo {
             position: absolute;
-            top: 10px;
+            top: calc(10px + env(safe-area-inset-top));
             right: 10px;
             background: rgba(0,0,0,0.7);
             padding: 5px 10px;
             border-radius: 4px;
             font-size: 12px;
             z-index: 1000;
+        }
+        
+        #installPrompt {
+            position: absolute;
+            top: calc(10px + env(safe-area-inset-top));
+            left: 10px;
+            background: #28a745;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 1000;
+            display: none;
         }
     </style>
 </head>
@@ -2608,6 +2908,7 @@ function generateViewerHTML() {
     </div>
     
     <div id="deviceInfo"></div>
+    <div id="installPrompt" onclick="installApp()">⬇️</div>
     
     <div id="controls" style="display: none;">
         <button id="playCamera">📹 Play Camera</button>
@@ -2622,6 +2923,37 @@ function generateViewerHTML() {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
                 "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
             }
+        }
+    </script>
+    
+    <script>
+        // PWA Installation for exported scene
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installPrompt').style.display = 'block';
+        });
+        
+        function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('PWA installed');
+                    }
+                    deferredPrompt = null;
+                    document.getElementById('installPrompt').style.display = 'none';
+                });
+            }
+        }
+        
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('SW registered'))
+                .catch(err => console.log('SW registration failed'));
         }
     </script>
     <script type="module" src="viewer.js"></script>
@@ -3364,6 +3696,98 @@ function removePhonePreviewBorder() {
         delete window.originalRendererSize;
         console.log('📱 Phone preview deactivated');
     }
+}
+
+function generateManifest() {
+    return `{
+  "name": "3D Model Viewer - Exported Scene",
+  "short_name": "3D Scene",
+  "description": "Exported 3D scene with camera animations and model viewer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#222222",
+  "theme_color": "#007bff",
+  "orientation": "any",
+  "scope": "./",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}`;
+}
+
+function generateServiceWorker() {
+    return `// Service Worker for Exported 3D Scene
+const CACHE_NAME = 'exported-3d-scene-v1.0.0';
+const urlsToCache = [
+  './',
+  './index.html',
+  './viewer.js',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './apple-touch-icon.png',
+  './favicon.ico'
+];
+
+// Add model file to cache if it exists
+const modelFile = '${window.currentModelFileName || 'model.glb'}';
+if (modelFile) {
+  urlsToCache.push('./' + modelFile);
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Caching app files');
+        return cache.addAll(urlsToCache.filter(url => url !== './undefined'));
+      })
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
+      }
+    )
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});`;
 }
 
 function loadGLB(file) {
